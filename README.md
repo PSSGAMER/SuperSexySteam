@@ -1,8 +1,10 @@
 # SuperSexySteam
 
-This is a tool that tricks makes use of the cache feature of steam to download games, and works in conjuction with GreenLuma. This is a beta release. I have packed GreenLuma by Steam006 with my code for convinience. This is not professional, and Steam006 can contact me and I will remove it. The eventual plan is to move away from GreenLuma due to its closed source nature and implement my own emulator. This will be done once my scripts are refined to perfection
+This is a tool that makes use of the lack of verification to download games, and works in conjuction with GreenLuma. This is a beta release. I have packed GreenLuma by Steam006 with my code for convinience. Steam006 can contact me if they have issues with it and I will remove it. The eventual plan is to move away from GreenLuma due to its closed source nature and implement my own emulator. I don't have enough knowledge currently to do so
 
-The README is a WIP
+## ⚠️ Why is this in Beta?
+
+This project is currently in beta due to compilation challenges. I'm experiencing trouble compiling all the code into a single executable file (.exe). Once I'm able to successfully compile everything into a standalone executable, I will release the official v1.0. Until then, the project remains in beta and requires manual setup with Python dependencies. I will look into any PRs that help me with this, and also with anything in general. If you have an improvement, dont hesitate to make a PR
 
 ## 🚀 Getting Started
 
@@ -50,22 +52,14 @@ These steps will guide you through cloning the repository and setting up a clean
         venv\Scripts\activate
         ```
 
-    *   **On macOS & Linux:**
-        ```sh
-        source venv/bin/activate
-        ```
-
     Your terminal prompt should now be prefixed with `(venv)`, indicating the environment is active.
 
 5.  **Install Required Packages**
 
     With your virtual environment active, use `pip` to install the necessary Python libraries for the application:
     ```sh
-    pip install customtkinter tkinterdnd2 Pillow
+    pip install customtkinter tkinterdnd2 Pillow steam protobuf==3.20.3 gevent-eventemitter
     ```
-6. **Setting up GreenLuma
-
-    Go to SuperSexySteam/GreenLuma/NormalMode and run GreenLumaSettings_2025.exe. Choose option 2 and follow the instructions
 
 ### Running the Application
 
@@ -84,4 +78,12 @@ The very first time you run the application, it will detect that `config.ini` is
 
 After confirming these paths, the settings will be saved to `config.ini`, and the main application will launch. This setup process will not occur on subsequent launches.
 
-Enjoy!!
+## 🎮 Starting Steam with GreenLuma
+
+To run Steam with the SuperSexySteam setup:
+
+1.  **Launch GreenLuma:** Navigate to the `GreenLuma/NormalMode` folder and double-click on `DLLInjector.exe` to start Steam with GreenLuma integration.
+
+2.  **Run Refresh Script:** Always run the refresh script before starting Steam. You should also run it anytime you encounter problems while downloading games. This ensures your cache and configuration are properly synchronized.
+
+**Important:** Make sure to run the refresh script whenever you experience download issues or before each Steam session for optimal performance.
