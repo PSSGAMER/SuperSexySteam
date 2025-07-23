@@ -218,7 +218,7 @@ class ManifestGenerator:
                     "Universe": 1, # 1 = Public Steam
                     "LauncherPath": "",
                     "name": parsed_info['Name'],
-                    "StateFlags": 4, # 4 = Fully installed and updated
+                    "StateFlags": 1026, # 4 = Update required, download in progress
                     "installdir": parsed_info['InstallDir'],
                     "LastUpdated": 0,
                     "SizeOnDisk": total_size,
