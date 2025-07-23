@@ -1,6 +1,6 @@
 # SuperSexySteam
 
-This is a tool that makes use of the lack of verification to download games, and works in conjuction with GreenLuma. This is a beta release. I have packed GreenLuma by Steam006 with my code for convinience. Steam006 can contact me if they have issues with it and I will remove it. The eventual plan is to move away from GreenLuma due to its closed source nature and implement my own emulator. I don't have enough knowledge currently to do so
+This is a tool that makes use of the lack of verification to download games, and works in conjunction with GreenLuma. This is a beta release. I have packed GreenLuma by Steam006 with my code for convenience. Steam006 can contact me if they have issues with it and I will remove it. The eventual plan is to move away from GreenLuma due to its closed source nature and implement my own emulator. I don't have enough knowledge currently to do so
 
 ## ⚠️ Why is this in Beta?
 
