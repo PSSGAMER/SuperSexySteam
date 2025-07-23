@@ -4,7 +4,7 @@
 # files (.lua and .manifest) for further processing. This script serves as the
 # user-facing front-end.
 #
-# Main Workflow:
+# Workflow:
 # 1. On first launch, prompts the user to configure paths via modal dialogs.
 #    These settings are saved permanently in 'config.ini'.
 # 2. Presents a themed drag-and-drop interface. Users can drop a single .lua
