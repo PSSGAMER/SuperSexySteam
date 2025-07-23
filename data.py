@@ -24,6 +24,8 @@ import os
 import re
 import shutil
 import time
+import sys
+import subprocess
 
 
 # =============================================================================
@@ -342,6 +344,17 @@ def main():
         manage_depot_cache(steam_path)
     else:
         print(f"\n[Warning] Steam path '{steam_path}' is invalid. Skipping depotcache management.")
+
+      # --- Final Step: Execute acfgen.py ---
+    print("\nLaunching acfgen.py...")
+    try:
+        # Use Popen to launch the script in a new, non-blocking process.
+        subprocess.Popen([sys.executable, "acfgen.py"])
+        print("  Successfully launched acfgen.py.")
+    except FileNotFoundError:
+        print("  [Error] 'acfgen.py' not found in the script directory! Skipping.")
+    except Exception as e:
+        print(f"  [Error] Failed to launch acfgen.py: {e}")
 
     print("\n-------------------------------------------")
     print("Processing complete.")
