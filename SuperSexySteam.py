@@ -4,7 +4,7 @@
 # files (.lua and .manifest) for further processing. This script serves as the
 # user-facing front-end.
 #
-# Main Workflow:
+# Workflow:
 # 1. On first launch, prompts the user to configure paths via modal dialogs.
 #    These settings are saved permanently in 'config.ini'.
 # 2. Presents a themed drag-and-drop interface. Users can drop a single .lua
@@ -33,6 +33,108 @@ import configparser
 from PIL import Image, ImageDraw
 import sys
 import subprocess
+
+
+# =============================================================================
+# --- DATA PARSING FUNCTIONS ---
+# =============================================================================
+
+def parse_lua_for_depots(lua_path):
+    """
+    Reads a given .lua file and extracts all DepotIDs that have a corresponding
+    DepotKey. It specifically looks for the 'addappid(id, 1, "key")' format.
+
+    This function is designed to be resilient, ignoring comment lines and lines
+    that define AppIDs or DLCs without an associated decryption key.
+
+    Args:
+        lua_path (str): The full path to the .lua file to be parsed.
+
+    Returns:
+        list: A list of dictionaries. Each dictionary represents a found depot
+              and has the keys 'depot_id' and 'depot_key'. Returns an empty
+              list if the file is not found or an error occurs.
+    """
+    # This regex is crafted to match lines containing a depot with a key.
+    # - `^\s*addappid\(`: Matches the start of the line and the function name.
+    # - `(\d+)`: Captures the numeric DepotID (Group 1).
+    # - `,\s*1,\s*`: Ensures it's a line with the '1' parameter, which typically
+    #                indicates a depot with a key, not just a DLC definition.
+    # - `"([a-fA-F0-9]+)"`: Captures the hexadecimal DepotKey (Group 2).
+    depot_pattern = re.compile(r'^\s*addappid\((\d+),\s*1,\s*"([a-fA-F0-9]+)"\)')
+
+    extracted_depots = []
+    try:
+        with open(lua_path, 'r', encoding='utf-8') as f:
+            for line in f:
+                # Ignore comment lines to avoid parsing them.
+                if line.strip().startswith('--'):
+                    continue
+
+                match = depot_pattern.match(line)
+                if match:
+                    depot_id = match.group(1)
+                    depot_key = match.group(2)
+                    extracted_depots.append({
+                        'depot_id': depot_id,
+                        'depot_key': depot_key
+                    })
+    except FileNotFoundError:
+        print(f"  [Warning] Could not find file during parsing: {lua_path}")
+    except Exception as e:
+        print(f"  [Error] Failed to read or parse {os.path.basename(lua_path)}: {e}")
+
+    return extracted_depots
+
+
+def update_greenluma_applist(gl_path, new_appids, new_depots):
+    """
+    Adds new AppIDs and their associated DepotIDs to the GreenLuma AppList folder.
+
+    It works by finding the highest numbered existing .txt file and creating
+    new files sequentially from that point. First, it writes all the new AppIDs,
+    then it writes all the depots associated with those new AppIDs.
+
+    Args:
+        gl_path (str): The path to the main GreenLuma folder.
+        new_appids (list): A list of AppID strings to add.
+        new_depots (list): A list of depot dictionaries from the new apps.
+    """
+    print(f"\nProcessing GreenLuma AppList: {gl_path}")
+    applist_dir = os.path.join(gl_path, 'NormalMode', 'AppList')
+    if not os.path.isdir(applist_dir):
+        print(f"[Error] GreenLuma AppList directory not found: {applist_dir}")
+        return
+
+    # Find the next available index for a new file.
+    indices = [int(os.path.splitext(f)[0]) for f in os.listdir(applist_dir) if os.path.splitext(f)[0].isdigit() and f.endswith('.txt')]
+    current_index = max(indices) + 1 if indices else 0
+    print(f"  Found {len(indices)} existing entries. Starting new entries from index {current_index}.")
+
+    # Write all new AppIDs to sequentially numbered files.
+    if new_appids:
+        print(f"  Writing {len(new_appids)} new AppIDs...")
+        for app_id in new_appids:
+            filepath = os.path.join(applist_dir, f"{current_index}.txt")
+            try:
+                with open(filepath, 'w', encoding='utf-8') as f: f.write(app_id)
+                print(f"    - Created {os.path.basename(filepath)} with AppID: {app_id}")
+                current_index += 1
+            except Exception as e: print(f"[Error] Could not write file {filepath}: {e}")
+
+    # Write all depots from those new apps to sequentially numbered files.
+    new_depot_ids = [d['depot_id'] for d in new_depots]
+    if new_depot_ids:
+        print(f"  Writing {len(new_depot_ids)} new DepotIDs...")
+        for depot_id in new_depot_ids:
+            filepath = os.path.join(applist_dir, f"{current_index}.txt")
+            try:
+                with open(filepath, 'w', encoding='utf-8') as f: f.write(depot_id)
+                print(f"    - Created {os.path.basename(filepath)} with DepotID: {depot_id}")
+                current_index += 1
+            except Exception as e: print(f"[Error] Could not write file {filepath}: {e}")
+
+    print("  Finished updating GreenLuma AppList.")
 
 
 # =============================================================================
@@ -330,9 +432,10 @@ class App(TkinterDnD.Tk):
         2. Reads the list of previously known AppIDs from config.ini.
         3. Compares the session's AppIDs with the known list to categorize them
            into 'new' and 'updated'.
-        4. Writes the categorized lists to 'data.ini' for the next script.
+        4. Writes the categorized lists to 'data.ini' for acfgen.py.
         5. Updates the master list of known AppIDs in 'config.ini'.
-        6. Launches 'data.py' and closes itself.
+        6. Processes GreenLuma AppList directly.
+        7. Launches 'acfgen.py' and closes itself.
         """
         if not self.session_appids:
             self.update_status("No AppIDs dropped in this session to apply.", "warning")
@@ -354,7 +457,7 @@ class App(TkinterDnD.Tk):
         with open('config.ini', 'w') as f:
             self.app_config.write(f)
 
-        # Prepare the data for the next script.
+        # Prepare the data for acfgen.py.
         data_config = configparser.ConfigParser()
         data_config['AppIDs'] = {
             'new': ",".join(sorted(list(new_appids_for_data_ini))),
@@ -363,17 +466,38 @@ class App(TkinterDnD.Tk):
         with open('data.ini', 'w') as f:
             data_config.write(f)
 
-        self.update_status(f"Applied {len(new_appids_for_data_ini)} new, {len(updated_appids_for_data_ini)} updated IDs. Launching processor...", "success")
+        self.update_status(f"Applied {len(new_appids_for_data_ini)} new, {len(updated_appids_for_data_ini)} updated IDs. Processing GreenLuma...", "success")
 
-        # Launch data.py in a new process and exit.
+        # Process GreenLuma AppList directly
         try:
+            greenluma_path = self.app_config.get('Paths', 'greenluma_path', fallback='')
+            if greenluma_path and os.path.isdir(greenluma_path):
+                # Parse depot data from new AppIDs only
+                new_appids_list = list(new_appids_for_data_ini)
+                all_new_depots = []
+                for app_id in new_appids_list:
+                    lua_path = os.path.join('data', app_id, f"{app_id}.lua")
+                    depots = parse_lua_for_depots(lua_path)
+                    all_new_depots.extend(depots)
+                
+                # Update GreenLuma AppList
+                update_greenluma_applist(greenluma_path, new_appids_list, all_new_depots)
+            else:
+                print(f"[Warning] GreenLuma path '{greenluma_path}' is invalid. Skipping AppList update.")
+        except Exception as e:
+            self.update_status(f"Error processing GreenLuma: {e}", "error")
+            print(f"[Error] Failed to process GreenLuma: {e}")
+
+        # Launch acfgen.py in a new process and exit.
+        try:
+            self.update_status("Launching ACF generator...", "success")
             # sys.executable ensures the new process uses the same Python interpreter.
-            subprocess.Popen([sys.executable, "data.py"])
+            subprocess.Popen([sys.executable, "acfgen.py"])
             self.destroy()
         except FileNotFoundError:
-            self.update_status("Error: 'data.py' not found in script directory!", "error")
+            self.update_status("Error: 'acfgen.py' not found in script directory!", "error")
         except Exception as e:
-            self.update_status(f"Failed to launch data.py: {e}", "error")
+            self.update_status(f"Failed to launch acfgen.py: {e}", "error")
 
     def on_update_detected(self, app_id: str):
         """A hook called when a drop overwrites an existing AppID folder for logging."""
