@@ -97,29 +97,59 @@ class GameDatabaseManager:
         """Handle database corruption by creating a backup and rebuilding."""
         import shutil
         from datetime import datetime
+        import time
         
         # Create backup of corrupted database
         backup_path = f"{self.db_path}.corrupted_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         try:
             if os.path.exists(self.db_path):
-                shutil.copy2(self.db_path, backup_path)
-                print(f"[Info] Corrupted database backed up to: {backup_path}")
-                os.remove(self.db_path)
+                # Try to close any existing connections first
+                time.sleep(0.1)  # Brief pause to allow connections to close
+                
+                # Attempt backup with retry
+                max_retries = 3
+                for attempt in range(max_retries):
+                    try:
+                        shutil.copy2(self.db_path, backup_path)
+                        print(f"[Info] Corrupted database backed up to: {backup_path}")
+                        break
+                    except (OSError, IOError) as e:
+                        if attempt < max_retries - 1:
+                            time.sleep(0.5)  # Wait before retry
+                            continue
+                        else:
+                            print(f"[Warning] Could not backup corrupted database after {max_retries} attempts: {e}")
+                
+                # Try to remove corrupted file
+                try:
+                    os.remove(self.db_path)
+                except (OSError, IOError) as e:
+                    print(f"[Warning] Could not remove corrupted database: {e}")
+                    # Continue anyway, will overwrite
+                    
         except Exception as e:
-            print(f"[Warning] Could not backup corrupted database: {e}")
+            print(f"[Warning] Error during corruption handling: {e}")
         
         # Reinitialize database
         print("[Info] Rebuilding database from scratch...")
-        self._init_database()
+        try:
+            self._init_database()
+        except Exception as e:
+            print(f"[Error] Failed to rebuild database: {e}")
+            raise
         
         # Return new connection
-        conn = sqlite3.connect(self.db_path, timeout=30.0)
-        conn.execute('PRAGMA foreign_keys=ON')
-        conn.execute('PRAGMA journal_mode=WAL')
-        conn.execute('PRAGMA synchronous=NORMAL')
-        conn.execute('PRAGMA cache_size=1000')
-        conn.execute('PRAGMA temp_store=memory')
-        return conn
+        try:
+            conn = sqlite3.connect(self.db_path, timeout=30.0)
+            conn.execute('PRAGMA foreign_keys=ON')
+            conn.execute('PRAGMA journal_mode=WAL')
+            conn.execute('PRAGMA synchronous=NORMAL')
+            conn.execute('PRAGMA cache_size=1000')
+            conn.execute('PRAGMA temp_store=memory')
+            return conn
+        except Exception as e:
+            print(f"[Error] Failed to create new connection: {e}")
+            raise
 
     def add_appid_with_depots(self, app_id: str, depots: List[Dict[str, str]]) -> bool:
         """

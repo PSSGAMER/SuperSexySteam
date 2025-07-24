@@ -17,10 +17,11 @@ def parse_lua_for_depots(lua_path):
     """
     Reads a given .lua file and extracts all DepotIDs that have a corresponding
     DepotKey. Supports multiple Lua formats:
-    1. addappid() function calls: addappid(12345, 1, "HEXKEY")
-    2. Variable assignments: depot_12345_1 = "KEY123"
-    3. Table entries: ["12345"] = "KEY123"
-    4. Comment format: -- DepotID: 12345 Key: KEY123
+    1. adddepot() function calls: adddepot(12345, "HEXKEY")
+    2. addappid() function calls: addappid(12345, 1, "HEXKEY")
+    3. Variable assignments: depot_12345_1 = "KEY123"
+    4. Table entries: ["12345"] = "KEY123"
+    5. Comment format: -- DepotID: 12345 Key: KEY123
 
     Args:
         lua_path (str): The full path to the .lua file to be parsed.
@@ -32,20 +33,11 @@ def parse_lua_for_depots(lua_path):
     """
     # Multiple regex patterns to handle different Lua formats
     patterns = [
-        # Pattern 1: addappid function calls: addappid(12345, 1, "HEXKEY")
+        # Pattern 1: adddepot with key: adddepot(12345, "HEXKEY")
+        re.compile(r'^\s*adddepot\((\d+),\s*"([a-zA-Z0-9]+)"\)'),
+        
+        # Pattern 2: addappid function calls: addappid(12345, 1, "HEXKEY")
         re.compile(r'^\s*addappid\((\d+),\s*1,\s*"([a-zA-Z0-9]+)"\)'),
-        
-        # Pattern 2: Variable assignments: depot_12345_1 = "KEY123"
-        re.compile(r'^\s*depot_(\d+)(?:_\d+)?\s*=\s*"([a-zA-Z0-9]+)"'),
-        
-        # Pattern 3: Table entries: ["12345"] = "KEY123"
-        re.compile(r'^\s*\["(\d+)"\]\s*=\s*"([a-zA-Z0-9]+)"'),
-        
-        # Pattern 4: Simple assignments: 12345 = "KEY123"
-        re.compile(r'^\s*(\d+)\s*=\s*"([a-zA-Z0-9]+)"'),
-        
-        # Pattern 5: Comments with depot info: -- DepotID: 12345 Key: KEY123
-        re.compile(r'--\s*DepotID:\s*(\d+)\s+Key:\s*([a-zA-Z0-9]+)'),
     ]
 
     extracted_depots = []
@@ -74,7 +66,7 @@ def parse_lua_for_depots(lua_path):
 
 def parse_lua_for_all_depots(lua_path):
     """
-    Reads a given .lua file and extracts all DepotIDs from addappid calls,
+    Reads a given .lua file and extracts all DepotIDs from addappid and adddepot calls,
     regardless of whether they have decryption keys or not.
     
     This function is used for GreenLuma AppList processing where we need
@@ -88,9 +80,20 @@ def parse_lua_for_all_depots(lua_path):
               and has the key 'depot_id' and optionally 'depot_key'. Returns an empty
               list if the file is not found or an error occurs.
     """
-    # This regex matches any addappid line, with or without a key
-    depot_pattern_with_key = re.compile(r'^\s*addappid\((\d+),\s*1,\s*"([a-fA-F0-9]+)"\)')
-    depot_pattern_without_key = re.compile(r'^\s*addappid\((\d+),?\s*[^,\)]*\)')
+    # Multiple regex patterns to handle different Lua formats
+    patterns = [
+        # Pattern 1: adddepot with key: adddepot(12345, "KEY123")
+        (re.compile(r'^\s*adddepot\((\d+),\s*"([a-zA-Z0-9]+)"\)'), True),
+        
+        # Pattern 2: adddepot without key: adddepot(12345)
+        (re.compile(r'^\s*adddepot\((\d+)\)'), False),
+        
+        # Pattern 3: addappid with key: addappid(12345, 1, "KEY123")
+        (re.compile(r'^\s*addappid\((\d+),\s*1,\s*"([a-zA-Z0-9]+)"\)'), True),
+        
+        # Pattern 4: addappid without key: addappid(12345, ...)
+        (re.compile(r'^\s*addappid\((\d+),?\s*[^,\)]*\)'), False),
+    ]
 
     extracted_depots = []
     try:
@@ -100,26 +103,27 @@ def parse_lua_for_all_depots(lua_path):
                 if line.strip().startswith('--'):
                     continue
 
-                # First try to match patterns with keys
-                match_with_key = depot_pattern_with_key.match(line)
-                if match_with_key:
-                    depot_id = match_with_key.group(1)
-                    depot_key = match_with_key.group(2)
-                    extracted_depots.append({
-                        'depot_id': depot_id,
-                        'depot_key': depot_key
-                    })
-                    continue
-                
-                # Then try to match patterns without keys
-                match_without_key = depot_pattern_without_key.match(line)
-                if match_without_key:
-                    depot_id = match_without_key.group(1)
-                    # Only add if we haven't already added this depot with a key
-                    if not any(d['depot_id'] == depot_id for d in extracted_depots):
-                        extracted_depots.append({
-                            'depot_id': depot_id
-                        })
+                # Try each pattern
+                for pattern, has_key in patterns:
+                    match = pattern.match(line)
+                    if match:
+                        depot_id = match.group(1)
+                        
+                        # Check if we already have this depot
+                        existing_depot = next((d for d in extracted_depots if d['depot_id'] == depot_id), None)
+                        
+                        if existing_depot:
+                            # If we already have this depot and this match has a key, update it
+                            if has_key and len(match.groups()) >= 2:
+                                existing_depot['depot_key'] = match.group(2)
+                        else:
+                            # Add new depot
+                            depot_data = {'depot_id': depot_id}
+                            if has_key and len(match.groups()) >= 2:
+                                depot_data['depot_key'] = match.group(2)
+                            extracted_depots.append(depot_data)
+                        
+                        break  # Stop at first match for this line
                         
     except FileNotFoundError:
         print(f"  [Warning] Could not find file during parsing: {lua_path}")
