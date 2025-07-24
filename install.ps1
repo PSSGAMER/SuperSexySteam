@@ -171,6 +171,11 @@ if (Test-Path "$InstallDir\icon.ico") {
 $Shortcut.Description = "SuperSexySteam - Steam Depot Management Tool"
 $Shortcut.Save()
 
+# Set shortcut to run as administrator
+$bytes = [System.IO.File]::ReadAllBytes("$DesktopDir\SuperSexySteam.lnk")
+$bytes[0x15] = $bytes[0x15] -bor 0x20  # Set the RunAsUser flag
+[System.IO.File]::WriteAllBytes("$DesktopDir\SuperSexySteam.lnk", $bytes)
+
 # Refresher shortcut
 $Shortcut = $WshShell.CreateShortcut("$DesktopDir\SuperSexySteam Refresher.lnk")
 $Shortcut.TargetPath = "$InstallDir\venv\Scripts\python.exe"
@@ -182,6 +187,11 @@ if (Test-Path "$InstallDir\refreshericon.ico") {
 }
 $Shortcut.Description = "SuperSexySteam Refresher - Database Refresh Tool"
 $Shortcut.Save()
+
+# Set shortcut to run as administrator
+$bytes = [System.IO.File]::ReadAllBytes("$DesktopDir\SuperSexySteam Refresher.lnk")
+$bytes[0x15] = $bytes[0x15] -bor 0x20  # Set the RunAsUser flag
+[System.IO.File]::WriteAllBytes("$DesktopDir\SuperSexySteam Refresher.lnk", $bytes)
 
 # DLL Injector shortcut
 $Shortcut = $WshShell.CreateShortcut("$DesktopDir\DLL Injector.lnk")
