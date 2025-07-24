@@ -356,6 +356,8 @@ def main():
             print(f"[Error] A critical error occurred while processing AppID {app_id_str}: {e}")
 
     print(f"\n--- acfgen.py: Finished ---")
+    
+    time.sleep(3)
 
 if __name__ == "__main__":
     """
