@@ -2,10 +2,6 @@
 
 A powerful tool for Steam depot management that works in conjunction with GreenLuma. This tool helps you manage Steam depot files and provides an intuitive interface for processing .lua and .manifest files.
 
-## ⚠️ Project Status
-
-This project is currently in beta due to compilation challenges. The goal is to compile everything into a single executable file (.exe) for the official v1.0 release. Until then, the project requires manual Python setup or you can use the provided installer.
-
 **Note:** GreenLuma by Steam006 is included for convenience. If Steam006 has any concerns, please contact me and I will remove it. The eventual plan is to implement a custom emulator solution.
 
 ---
@@ -73,11 +69,6 @@ If you want to run SuperSexySteam directly from source code:
    ```bash
    venv\Scripts\activate
    ```
-   
-   **Linux/Mac:**
-   ```bash
-   source venv/bin/activate
-   ```
 
 4. **Install Dependencies**
    ```bash
@@ -88,11 +79,6 @@ If you want to run SuperSexySteam directly from source code:
    ```bash
    python SuperSexySteam.py
    ```
-
-#### Alternative: Direct Dependency Installation
-```bash
-pip install customtkinter tkinterdnd2 Pillow steam protobuf==3.20.3 gevent-eventemitter
-```
 
 ---
 
