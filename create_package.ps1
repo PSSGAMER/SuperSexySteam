@@ -86,7 +86,7 @@ Get-ChildItem -Path $ProjectDir | ForEach-Object {
 Write-Host ""
 Write-Host "Creating zip archive..." -ForegroundColor Yellow
 try {
-    Compress-Archive -Path "$TempDir\*" -DestinationPath $ZipPath -Force
+    Compress-Archive -Path "$TempDir\*" -DestinationPath $ZipPath -Force -CompressionLevel Fastest
     Write-Host "Package created successfully!" -ForegroundColor Green
 } catch {
     Write-Host "ERROR: Failed to create zip package." -ForegroundColor Red
