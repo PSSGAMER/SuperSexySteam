@@ -10,8 +10,8 @@
 # 3. Parses all .lua files to extract depot and key information.
 # 4. Updates Steam's 'config/config.vdf' depots section with all the
 #    collected depot decryption keys using the VDF library.
-# 5. Manages the Steam 'depotcache' folder by clearing its contents and copying
-#    all .manifest files from the local 'data' directory into it.
+# 5. Efficiently manages the Steam 'depotcache' folder by only adding missing
+#    .manifest files from the local 'data' directory, preserving existing cache.
 #
 # This script uses the VDF library for proper config.vdf parsing.
 
@@ -203,11 +203,11 @@ def update_config_vdf(config_path, all_depots):
 
 def manage_depot_cache(steam_path):
     """
-    Clears the Steam depotcache folder and copies all .manifest files from the
-    local 'data' directory into it.
+    Efficiently manages the Steam depotcache folder by only adding missing .manifest files
+    from the local 'data' directory.
 
     This ensures that Steam has the correct manifest files for any subsequent
-    operations without having to download them.
+    operations without having to download them, while preserving existing cache files.
 
     Args:
         steam_path (str): The path to the main Steam installation folder.
@@ -223,34 +223,53 @@ def manage_depot_cache(steam_path):
     try:
         # Create the depotcache directory if it doesn't exist.
         os.makedirs(depotcache_dir, exist_ok=True)
-        # Clear all contents of the directory for a clean slate.
-        print("  Clearing existing depotcache contents...")
-        for item_name in os.listdir(depotcache_dir):
-            item_path = os.path.join(depotcache_dir, item_name)
-            if os.path.isfile(item_path) or os.path.islink(item_path):
-                os.remove(item_path)
-            elif os.path.isdir(item_path):
-                shutil.rmtree(item_path)
+        
+        # Get list of existing manifest files in depotcache
+        existing_manifests = set()
+        if os.path.exists(depotcache_dir):
+            for item in os.listdir(depotcache_dir):
+                if item.lower().endswith('.manifest'):
+                    existing_manifests.add(item)
+        
+        print(f"  Found {len(existing_manifests)} existing manifest files in cache")
+        
     except Exception as e:
-        print(f"[Error] Failed to clear depotcache: {e}")
+        print(f"[Error] Failed to access depotcache: {e}")
         return
 
     # Walk through the entire 'data' directory tree to find all .manifest files.
-    print("  Copying new manifest files...")
+    print("  Checking for missing manifest files...")
     manifest_count = 0
+    copied_count = 0
+    skipped_count = 0
+    
     for root, dirs, files in os.walk(data_dir):
         for filename in files:
             if filename.lower().endswith('.manifest'):
+                manifest_count += 1
                 source_path = os.path.join(root, filename)
                 dest_path = os.path.join(depotcache_dir, filename)
+                
+                # Check if file already exists and has the same size
+                if filename in existing_manifests:
+                    try:
+                        if (os.path.exists(dest_path) and 
+                            os.path.getsize(source_path) == os.path.getsize(dest_path)):
+                            skipped_count += 1
+                            continue
+                    except OSError:
+                        pass  # If we can't check size, copy the file anyway
+                
+                # Copy missing or different manifest files
                 try:
                     shutil.copy2(source_path, dest_path)
                     print(f"    - Copied {filename}")
-                    manifest_count += 1
+                    copied_count += 1
                 except Exception as e:
                     print(f"[Error] Failed to copy {filename}: {e}")
 
-    print(f"  Finished. Copied {manifest_count} manifest files.")
+    print(f"  Finished. Found {manifest_count} manifest files total.")
+    print(f"  Copied {copied_count} new/updated files, skipped {skipped_count} existing files.")
 
 
 # =============================================================================
