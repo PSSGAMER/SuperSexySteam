@@ -119,9 +119,8 @@ def update_config_vdf(vdf_path, all_depots):
     """
     Completely replaces the 'depots' section within Steam's config.vdf file.
 
-    This function reads the VDF file as plain text, finds and removes the existing
-    'depots' block, then rebuilds it entirely with all the provided depot data.
-    This approach ensures a clean, consistent depot section.
+    This function uses a proper VDF parser that correctly handles the hierarchical
+    structure and indentation of Steam's VDF format.
 
     Args:
         vdf_path (str): The full path to Steam's config.vdf file.
@@ -144,33 +143,57 @@ def update_config_vdf(vdf_path, all_depots):
         print(f"[Error] Could not read config.vdf: {e}")
         return
 
-    # --- Step 2: Find and remove the existing "depots" section ---
-    in_depots_section = False
+    # --- Step 2: Parse VDF structure and find depots section ---
     depots_start_index, depots_end_index = -1, -1
-    brace_level = 0
-
-    # Iterate through the file lines to identify the start and end of the section.
-    for i, line in enumerate(lines):
-        if '"depots"' in line and not in_depots_section:
-            in_depots_section = True
-            depots_start_index = i
-            # Brace counting begins after the "depots" line is found.
-            for j in range(i, len(lines)):
-                if '{' in lines[j]:
-                    brace_level += 1
-                    break
-            continue
-
-        if in_depots_section:
-            if '{' in line: brace_level += 1
-            if '}' in line: brace_level -= 1
-
-            # When brace level returns to 0, the section has ended.
-            if brace_level == 0:
+    current_indent_level = 0
+    depots_indent_level = -1
+    
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        stripped = line.strip()
+        
+        # Count current indentation level by counting leading tabs
+        line_indent = len(line) - len(line.lstrip('\t'))
+        
+        # Handle opening braces (increase nesting level)
+        if stripped == '{':
+            current_indent_level += 1
+        # Handle closing braces (decrease nesting level)
+        elif stripped == '}':
+            # If we're ending the depots section
+            if depots_indent_level != -1 and current_indent_level == depots_indent_level:
                 depots_end_index = i
                 break
+            current_indent_level -= 1
+        # Look for depots section start
+        elif stripped.startswith('"depots"') and depots_start_index == -1:
+            depots_start_index = i
+            depots_indent_level = current_indent_level
+            
+            # Find the opening brace for depots section
+            j = i + 1
+            while j < len(lines) and lines[j].strip() != '{':
+                j += 1
+            if j < len(lines):
+                current_indent_level += 1
+                i = j  # Skip to the opening brace
+        
+        i += 1
 
-    # --- Step 3: Build the new depots section from all depot data ---
+    # --- Step 3: Determine insertion point and indentation ---
+    # Find the Steam section to determine proper indentation
+    steam_indent_level = 0
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith('"Steam"'):
+            steam_indent_level = len(line) - len(line.lstrip('\t'))
+            break
+    
+    # Depots should be at the same level as other Steam config entries
+    depots_base_indent = '\t' * (steam_indent_level + 1)
+    
+    # --- Step 4: Build the new depots section ---
     print(f"  Building new depots section with {len(all_depots)} depot keys...")
     
     # Convert list to dictionary to eliminate duplicates (last key wins)
@@ -179,37 +202,61 @@ def update_config_vdf(vdf_path, all_depots):
         depots_dict[depot['depot_id']] = depot['depot_key']
     
     new_depots_lines = []
-    base_indent = '\t' * 4  # Match Steam's indentation style.
-    new_depots_lines.append(f'{base_indent}"depots"\n')
-    new_depots_lines.append(f'{base_indent}{{\n')
+    new_depots_lines.append(f'{depots_base_indent}"depots"\n')
+    new_depots_lines.append(f'{depots_base_indent}{{\n')
     
-    # Sort by Depot ID for a clean, consistent output.
-    for depot_id, key in sorted(depots_dict.items()):
-        new_depots_lines.append(f'{base_indent}\t"{depot_id}"\n')
-        new_depots_lines.append(f'{base_indent}\t{{\n')
-        new_depots_lines.append(f'{base_indent}\t\t"DecryptionKey"\t\t"{key}"\n')
-        new_depots_lines.append(f'{base_indent}\t}}\n')
-    new_depots_lines.append(f'{base_indent}}}\n')
+    # Sort by Depot ID for consistent output
+    for depot_id, key in sorted(depots_dict.items(), key=lambda x: int(x[0])):
+        new_depots_lines.append(f'{depots_base_indent}\t"{depot_id}"\n')
+        new_depots_lines.append(f'{depots_base_indent}\t{{\n')
+        new_depots_lines.append(f'{depots_base_indent}\t\t"DecryptionKey"\t\t"{key}"\n')
+        new_depots_lines.append(f'{depots_base_indent}\t}}\n')
+    new_depots_lines.append(f'{depots_base_indent}}}\n')
 
-    # --- Step 4: Replace or insert the depots section ---
+    # --- Step 5: Replace or insert the depots section ---
     if depots_start_index != -1 and depots_end_index != -1:
         # Replace existing section
         print("  Replacing existing depots section...")
         final_lines = lines[:depots_start_index] + new_depots_lines + lines[depots_end_index + 1:]
     else:
-        # Insert new section at the end if no existing section found
+        # Insert new section within the Steam section
         print("  No existing depots section found. Adding new section...")
-        # Insert before the final closing brace of the file
-        insert_index = len(lines) - 1
-        while insert_index > 0 and not lines[insert_index].strip():
-            insert_index -= 1  # Skip empty lines at the end
-        final_lines = lines[:insert_index] + new_depots_lines + lines[insert_index:]
+        
+        # Find the end of the Steam section to insert before it
+        steam_section_end = -1
+        brace_count = 0
+        in_steam_section = False
+        
+        for i, line in enumerate(lines):
+            stripped = line.strip()
+            if stripped.startswith('"Steam"'):
+                in_steam_section = True
+                continue
+            
+            if in_steam_section:
+                if stripped == '{':
+                    brace_count += 1
+                elif stripped == '}':
+                    brace_count -= 1
+                    if brace_count == 0:
+                        steam_section_end = i
+                        break
+        
+        if steam_section_end != -1:
+            # Insert before the closing brace of the Steam section
+            final_lines = lines[:steam_section_end] + new_depots_lines + lines[steam_section_end:]
+        else:
+            # Fallback: insert near the end of the file
+            print("  [Warning] Could not find Steam section end. Using fallback insertion.")
+            insert_index = len(lines) - 2  # Before the last closing brace
+            final_lines = lines[:insert_index] + new_depots_lines + lines[insert_index:]
 
-    # --- Step 5: Backup the old file and write the new one ---
+    # --- Step 6: Backup and write the new file ---
     try:
         backup_path = vdf_path + '.bak'
         print(f"  Backing up original config to {os.path.basename(backup_path)}")
         shutil.copy2(vdf_path, backup_path)
+        
         print("  Writing updated config.vdf...")
         with open(vdf_path, 'w', encoding='utf-8') as f:
             f.writelines(final_lines)
