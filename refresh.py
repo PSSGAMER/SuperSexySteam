@@ -8,12 +8,12 @@
 # 1. Reads 'config.ini' to get the user-configured Steam path.
 # 2. Scans the entire 'data' directory for all .lua files.
 # 3. Parses all .lua files to extract depot and key information.
-# 4. Completely replaces Steam's 'config/config.vdf' depots section with
-#    all the collected depot decryption keys.
+# 4. Updates Steam's 'config/config.vdf' depots section with all the
+#    collected depot decryption keys using the VDF library.
 # 5. Manages the Steam 'depotcache' folder by clearing its contents and copying
 #    all .manifest files from the local 'data' directory into it.
 #
-# This script uses only standard Python libraries.
+# This script uses the VDF library for proper config.vdf parsing.
 
 import configparser
 import os
@@ -21,6 +21,7 @@ import re
 import shutil
 import sys
 import time
+import vdf
 
 
 # =============================================================================
@@ -115,154 +116,90 @@ def parse_all_lua_files():
 # --- FILE MODIFICATION FUNCTIONS ---
 # =============================================================================
 
-def update_config_vdf(vdf_path, all_depots):
+def update_config_vdf(config_path, all_depots):
     """
-    Completely replaces the 'depots' section within Steam's config.vdf file.
-
-    This function uses a proper VDF parser that correctly handles the hierarchical
-    structure and indentation of Steam's VDF format.
+    Updates Steam's config.vdf file by merging depot decryption keys using the VDF library.
+    
+    This function reads the existing config.vdf, navigates to the Steam depots section,
+    and updates it with new depot keys, then writes the file back.
 
     Args:
-        vdf_path (str): The full path to Steam's config.vdf file.
-        all_depots (list): A list of depot dictionaries to write to the file.
+        config_path (str): The full path to Steam's config.vdf file.
+        all_depots (list): A list of depot dictionaries containing 'depot_id' and 'depot_key'.
     """
-    print(f"\nProcessing Steam config: {vdf_path}")
-    if not os.path.exists(vdf_path):
+    print(f"\nProcessing Steam config: {config_path}")
+    
+    if not os.path.exists(config_path):
         print("[Error] config.vdf not found at the specified path.")
-        return
+        return False
 
     if not all_depots:
         print("[Warning] No depot data provided. Skipping config.vdf update.")
-        return
+        return False
 
-    # --- Step 1: Read the entire VDF file into memory ---
     try:
-        with open(vdf_path, 'r', encoding='utf-8') as f:
-            lines = f.readlines()
-    except Exception as e:
-        print(f"[Error] Could not read config.vdf: {e}")
-        return
+        # Load existing Steam config.vdf
+        print("  Reading existing config.vdf...")
+        with open(config_path, 'r', encoding='utf-8') as f:
+            config = vdf.load(f)
 
-    # --- Step 2: Parse VDF structure and find depots section ---
-    depots_start_index, depots_end_index = -1, -1
-    current_indent_level = 0
-    depots_indent_level = -1
-    
-    i = 0
-    while i < len(lines):
-        line = lines[i]
-        stripped = line.strip()
-        
-        # Count current indentation level by counting leading tabs
-        line_indent = len(line) - len(line.lstrip('\t'))
-        
-        # Handle opening braces (increase nesting level)
-        if stripped == '{':
-            current_indent_level += 1
-        # Handle closing braces (decrease nesting level)
-        elif stripped == '}':
-            # If we're ending the depots section
-            if depots_indent_level != -1 and current_indent_level == depots_indent_level:
-                depots_end_index = i
-                break
-            current_indent_level -= 1
-        # Look for depots section start
-        elif stripped.startswith('"depots"') and depots_start_index == -1:
-            depots_start_index = i
-            depots_indent_level = current_indent_level
+        # Navigate through the VDF structure: InstallConfigStore → Software → Valve → Steam
+        if 'InstallConfigStore' not in config:
+            print("[Error] InstallConfigStore section not found in config.vdf")
+            return False
             
-            # Find the opening brace for depots section
-            j = i + 1
-            while j < len(lines) and lines[j].strip() != '{':
-                j += 1
-            if j < len(lines):
-                current_indent_level += 1
-                i = j  # Skip to the opening brace
+        software = config['InstallConfigStore']['Software']
         
-        i += 1
-
-    # --- Step 3: Determine insertion point and indentation ---
-    # Find the Steam section to determine proper indentation
-    steam_indent_level = 0
-    for i, line in enumerate(lines):
-        stripped = line.strip()
-        if stripped.startswith('"Steam"'):
-            steam_indent_level = len(line) - len(line.lstrip('\t'))
-            break
-    
-    # Depots should be at the same level as other Steam config entries
-    depots_base_indent = '\t' * (steam_indent_level + 1)
-    
-    # --- Step 4: Build the new depots section ---
-    print(f"  Building new depots section with {len(all_depots)} depot keys...")
-    
-    # Convert list to dictionary to eliminate duplicates (last key wins)
-    depots_dict = {}
-    for depot in all_depots:
-        depots_dict[depot['depot_id']] = depot['depot_key']
-    
-    new_depots_lines = []
-    new_depots_lines.append(f'{depots_base_indent}"depots"\n')
-    new_depots_lines.append(f'{depots_base_indent}{{\n')
-    
-    # Sort by Depot ID for consistent output
-    for depot_id, key in sorted(depots_dict.items(), key=lambda x: int(x[0])):
-        new_depots_lines.append(f'{depots_base_indent}\t"{depot_id}"\n')
-        new_depots_lines.append(f'{depots_base_indent}\t{{\n')
-        new_depots_lines.append(f'{depots_base_indent}\t\t"DecryptionKey"\t\t"{key}"\n')
-        new_depots_lines.append(f'{depots_base_indent}\t}}\n')
-    new_depots_lines.append(f'{depots_base_indent}}}\n')
-
-    # --- Step 5: Replace or insert the depots section ---
-    if depots_start_index != -1 and depots_end_index != -1:
-        # Replace existing section
-        print("  Replacing existing depots section...")
-        final_lines = lines[:depots_start_index] + new_depots_lines + lines[depots_end_index + 1:]
-    else:
-        # Insert new section within the Steam section
-        print("  No existing depots section found. Adding new section...")
-        
-        # Find the end of the Steam section to insert before it
-        steam_section_end = -1
-        brace_count = 0
-        in_steam_section = False
-        
-        for i, line in enumerate(lines):
-            stripped = line.strip()
-            if stripped.startswith('"Steam"'):
-                in_steam_section = True
-                continue
+        # Handle case-insensitive keys for Valve
+        valve = software.get('Valve') or software.get('valve')
+        if not valve:
+            print("[Error] Valve section not found in config.vdf")
+            return False
             
-            if in_steam_section:
-                if stripped == '{':
-                    brace_count += 1
-                elif stripped == '}':
-                    brace_count -= 1
-                    if brace_count == 0:
-                        steam_section_end = i
-                        break
-        
-        if steam_section_end != -1:
-            # Insert before the closing brace of the Steam section
-            final_lines = lines[:steam_section_end] + new_depots_lines + lines[steam_section_end:]
-        else:
-            # Fallback: insert near the end of the file
-            print("  [Warning] Could not find Steam section end. Using fallback insertion.")
-            insert_index = len(lines) - 2  # Before the last closing brace
-            final_lines = lines[:insert_index] + new_depots_lines + lines[insert_index:]
+        # Handle case-insensitive keys for Steam
+        steam = valve.get('Steam') or valve.get('steam')
+        if not steam:
+            print("[Error] Steam section not found in config.vdf")
+            return False
 
-    # --- Step 6: Backup and write the new file ---
-    try:
-        backup_path = vdf_path + '.bak'
+        # Prepare depot keys dictionary
+        print(f"  Preparing {len(all_depots)} depot keys...")
+        depots_dict = {}
+        for depot in all_depots:
+            depot_id = depot['depot_id']
+            depot_key = depot['depot_key']
+            depots_dict[depot_id] = {'DecryptionKey': depot_key}
+
+        # Remove duplicates (last key wins)
+        unique_depots = {}
+        for depot in all_depots:
+            unique_depots[depot['depot_id']] = depot['depot_key']
+        
+        print(f"  Processing {len(unique_depots)} unique depot keys...")
+
+        # Ensure depots section exists, then merge in new keys
+        steam.setdefault('depots', {})
+        
+        # Update depot keys
+        for depot_id, depot_key in unique_depots.items():
+            steam['depots'][depot_id] = {'DecryptionKey': depot_key}
+
+        # Backup original file
+        backup_path = config_path + '.bak'
         print(f"  Backing up original config to {os.path.basename(backup_path)}")
-        shutil.copy2(vdf_path, backup_path)
-        
+        shutil.copy2(config_path, backup_path)
+
+        # Write the updated VDF back to disk
         print("  Writing updated config.vdf...")
-        with open(vdf_path, 'w', encoding='utf-8') as f:
-            f.writelines(final_lines)
-        print(f"  Successfully updated config.vdf with {len(depots_dict)} unique depot keys.")
+        with open(config_path, 'w', encoding='utf-8') as f:
+            vdf.dump(config, f, pretty=True)
+
+        print(f"  Successfully updated config.vdf with {len(unique_depots)} depot keys.")
+        return True
+
     except Exception as e:
-        print(f"[Error] Failed to write updated config.vdf: {e}")
+        print(f"[Error] Failed to update config.vdf: {e}")
+        return False
 
 def manage_depot_cache(steam_path):
     """
@@ -324,7 +261,7 @@ def main():
     """
     The main orchestrator function for the script.
     It reads configuration, parses all available lua data, and refreshes
-    the Steam configuration database.
+    the Steam configuration database and depot cache.
     """
     print("--- refresh.py: Refreshing Steam database ---")
 
@@ -358,7 +295,7 @@ def main():
     # --- Update Steam VDF ---
     print("\n--- Updating Steam configuration ---")
     config_vdf_path = os.path.join(steam_path, 'config', 'config.vdf')
-    update_config_vdf(config_vdf_path, all_depots)
+    vdf_success = update_config_vdf(config_vdf_path, all_depots)
 
     # --- Manage Depot Cache ---
     print("\n--- Refreshing depot cache ---")
@@ -367,7 +304,10 @@ def main():
     print("\n-------------------------------------------")
     print("Database refresh complete!")
     print(f"Processed {len(all_depots)} depot keys total.")
-    print("Steam configuration has been updated.")
+    if vdf_success:
+        print("Steam configuration has been updated.")
+    else:
+        print("Steam configuration update failed.")
     
     # Brief pause to allow reading of the final output
     time.sleep(3)
