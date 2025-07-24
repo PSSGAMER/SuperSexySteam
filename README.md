@@ -228,13 +228,11 @@ These settings are saved to `config.ini` and won't be asked again.
 
 The following features are planned for future releases:
 
-### 📊 Enhanced Shared Depot Handling
+[ ] Enhanced Shared Depot Handling
+[ ] Improved Installer System
+[ ] Auto-Updater
 
-### 🔧 Improved Installer System
-
-### 🔄 Auto-Updater
-
-### 🎯 Additional Enhancements
+### 🎯 Additional Enhancements (Later)
 - **Improved UI/UX:** More intuitive interface with better visual feedback
 - **Custom Emulator:** Move away from GreenLuma dependency with a custom solution
 - **Enhanced Logging:** Better debugging and troubleshooting capabilities
