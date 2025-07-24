@@ -21,7 +21,8 @@ $FilesToInclude = @(
     "acfgen.py",
     "requirements.txt",
     "README.md",
-    "*.png",
+    "header.png",
+    "*.ico",
     "GreenLuma"
 )
 
@@ -31,6 +32,7 @@ $FilesToExclude = @(
     "install_launcher.bat",
     "install_config.ps1",
     "create_package.ps1",
+    "fix_shortcuts.ps1",
     "INSTALLER_README.md",
     "__pycache__",
     "*.zip"
@@ -114,4 +116,5 @@ Write-Host ""
 Write-Host "To distribute SuperSexySteam:" -ForegroundColor Yellow
 Write-Host "1. Copy SuperSexySteam.zip and the installer files to the same folder" -ForegroundColor White
 Write-Host "2. Users can then run install_launcher.bat to install" -ForegroundColor White
+Write-Host "3. If users have shortcut issues, provide fix_shortcuts.ps1" -ForegroundColor White
 Write-Host ""

@@ -38,6 +38,8 @@ The easiest way to install SuperSexySteam is using the automated installer:
 
 📖 **Need help?** See the included `INSTALLER_README.md` for detailed installation instructions and troubleshooting.
 
+🔧 **Shortcut Issues?** If desktop shortcuts don't work or icons don't appear, run `fix_shortcuts.bat` from the installer package.
+
 ---
 
 ## 🔧 Run from Source

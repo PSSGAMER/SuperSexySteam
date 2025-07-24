@@ -134,23 +134,52 @@ try {
 Write-Host ""
 Write-Host "Creating desktop shortcuts..." -ForegroundColor Yellow
 
+# Validate required files exist
+$RequiredFiles = @(
+    "$InstallDir\SuperSexySteam.py",
+    "$InstallDir\refresh.py", 
+    "$InstallDir\GreenLuma\NormalMode\DLLInjector.exe",
+    "$InstallDir\venv\Scripts\pythonw.exe"
+)
+
+$MissingFiles = @()
+foreach ($File in $RequiredFiles) {
+    if (-not (Test-Path $File)) {
+        $MissingFiles += $File
+    }
+}
+
+if ($MissingFiles.Count -gt 0) {
+    Write-Host "WARNING: Some required files are missing:" -ForegroundColor Yellow
+    foreach ($Missing in $MissingFiles) {
+        Write-Host "  - $Missing" -ForegroundColor Red
+    }
+    Write-Host "Shortcuts may not work correctly." -ForegroundColor Yellow
+}
+
 $WshShell = New-Object -comObject WScript.Shell
 
 # SuperSexySteam shortcut
 $Shortcut = $WshShell.CreateShortcut("$DesktopDir\SuperSexySteam.lnk")
-$Shortcut.TargetPath = "$InstallDir\venv\Scripts\python.exe"
+$Shortcut.TargetPath = "$InstallDir\venv\Scripts\pythonw.exe"
 $Shortcut.Arguments = "`"$InstallDir\SuperSexySteam.py`""
 $Shortcut.WorkingDirectory = $InstallDir
-$Shortcut.IconLocation = "$InstallDir\icon.png"
+# Use ICO file if available
+if (Test-Path "$InstallDir\icon.ico") {
+    $Shortcut.IconLocation = "$InstallDir\icon.ico"
+}
 $Shortcut.Description = "SuperSexySteam - Steam Depot Management Tool"
 $Shortcut.Save()
 
 # Refresher shortcut
 $Shortcut = $WshShell.CreateShortcut("$DesktopDir\SuperSexySteam Refresher.lnk")
-$Shortcut.TargetPath = "$InstallDir\venv\Scripts\python.exe"
+$Shortcut.TargetPath = "$InstallDir\venv\Scripts\pythonw.exe"
 $Shortcut.Arguments = "`"$InstallDir\refresh.py`""
 $Shortcut.WorkingDirectory = $InstallDir
-$Shortcut.IconLocation = "$InstallDir\refreshericon.png"
+# Use ICO file if available
+if (Test-Path "$InstallDir\refreshericon.ico") {
+    $Shortcut.IconLocation = "$InstallDir\refreshericon.ico"
+}
 $Shortcut.Description = "SuperSexySteam Refresher - Database Refresh Tool"
 $Shortcut.Save()
 
@@ -158,7 +187,10 @@ $Shortcut.Save()
 $Shortcut = $WshShell.CreateShortcut("$DesktopDir\DLL Injector.lnk")
 $Shortcut.TargetPath = "$InstallDir\GreenLuma\NormalMode\DLLInjector.exe"
 $Shortcut.WorkingDirectory = "$InstallDir\GreenLuma\NormalMode"
-$Shortcut.IconLocation = "$InstallDir\icondllinjector.png"
+# Use ICO file if available
+if (Test-Path "$InstallDir\icondllinjector.ico") {
+    $Shortcut.IconLocation = "$InstallDir\icondllinjector.ico"
+}
 $Shortcut.Description = "DLL Injector - GreenLuma DLL Injection Tool"
 $Shortcut.Save()
 
@@ -181,5 +213,12 @@ Write-Host "- SuperSexySteam Refresher.lnk" -ForegroundColor White
 Write-Host "- DLL Injector.lnk" -ForegroundColor White
 Write-Host ""
 Write-Host "You can now use SuperSexySteam from the desktop shortcuts." -ForegroundColor Green
+Write-Host ""
+Write-Host "TROUBLESHOOTING:" -ForegroundColor Yellow
+Write-Host "If shortcuts don't work or icons don't appear:" -ForegroundColor White
+Write-Host "1. Try running shortcuts as Administrator" -ForegroundColor White
+Write-Host "2. Check that Python is properly installed" -ForegroundColor White
+Write-Host "3. Verify all files exist in: $InstallDir" -ForegroundColor White
+Write-Host "4. For icons: Try refreshing desktop (F5) or restarting Explorer" -ForegroundColor White
 Write-Host ""
 Read-Host "Press Enter to exit"

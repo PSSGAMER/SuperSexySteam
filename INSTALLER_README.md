@@ -94,6 +94,24 @@ Users only need to download this folder and run `install_launcher.bat`.
 - Ensure you have the latest version of Python
 - Try running: `python -m pip install --upgrade pip setuptools`
 
+### Desktop shortcuts not working or icons not showing:
+- **Quick Fix:** Run `fix_shortcuts.bat` (included with installer files)
+- **Manual Fix:** 
+  1. Check that all files exist in the installation directory
+  2. Try running shortcuts as Administrator
+  3. Press F5 to refresh desktop or restart Windows Explorer
+  4. Manually navigate to installation directory and run: `venv\Scripts\pythonw.exe SuperSexySteam.py`
+
+### Icons appear as generic file icons:
+- Run the shortcut fix tool: `fix_shortcuts.bat`
+- This converts PNG icons to ICO format for better Windows compatibility
+- Refresh desktop (F5) after running the fix
+
+### "pythonw.exe not found" error:
+- The Python virtual environment may not have been created properly
+- Reinstall SuperSexySteam using the installer
+- Ensure Python 3.8+ is properly installed on your system
+
 ## Uninstalling:
 
 To uninstall SuperSexySteam:

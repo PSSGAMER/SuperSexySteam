@@ -389,14 +389,9 @@ class App(TkinterDnD.Tk):
         
         # --- Window Icon ---
         try:
-            icon_path = os.path.join(os.path.dirname(__file__), "icon.png")
+            icon_path = os.path.join(os.path.dirname(__file__), "icon.ico")
             if os.path.exists(icon_path):
-                # For tkinter windows, we need to use PhotoImage
-                from tkinter import PhotoImage
-                icon_photo = PhotoImage(file=icon_path)
-                self.iconphoto(True, icon_photo)
-                # Keep a reference to prevent garbage collection
-                self._icon_photo = icon_photo
+                self.wm_iconbitmap(icon_path)
         except Exception as e:
             print(f"[WARNING] Failed to load window icon: {e}")
 
