@@ -155,10 +155,10 @@ def configure_greenluma_injector(steam_path, greenluma_path):
         return
     
     # Construct the paths using Windows-style backslashes
-    # Point to the directories, not the specific files
+    # Point to the specific executable and DLL files
     # Escape backslashes for regex use
-    steam_directory = steam_path.replace('/', '\\').replace('\\', '\\\\')
-    greenluma_dll_directory = (greenluma_path.replace('/', '\\') + '\\NormalMode').replace('\\', '\\\\')
+    steam_exe_path = (steam_path.replace('/', '\\') + '\\Steam.exe').replace('\\', '\\\\')
+    greenluma_dll_path = (greenluma_path.replace('/', '\\') + '\\NormalMode\\GreenLuma_2025_x86.dll').replace('\\', '\\\\')
     
     # Read the current file content as text to preserve formatting and comments
     with open(injector_ini_path, 'r', encoding='utf-8') as f:
@@ -168,19 +168,19 @@ def configure_greenluma_injector(steam_path, greenluma_path):
     # Update UseFullPathsFromIni
     content = re.sub(r'^UseFullPathsFromIni\s*=\s*.*$', f'UseFullPathsFromIni = 1', content, flags=re.MULTILINE | re.IGNORECASE)
     
-    # Update Exe path - point to Steam directory
-    content = re.sub(r'^Exe\s*=\s*.*$', f'Exe = {steam_directory}', content, flags=re.MULTILINE | re.IGNORECASE)
+    # Update Exe path - point to Steam executable
+    content = re.sub(r'^Exe\s*=\s*.*$', f'Exe = {steam_exe_path}', content, flags=re.MULTILINE | re.IGNORECASE)
     
-    # Update Dll path - point to GreenLuma NormalMode directory  
-    content = re.sub(r'^Dll\s*=\s*.*$', f'Dll = {greenluma_dll_directory}', content, flags=re.MULTILINE | re.IGNORECASE)
+    # Update Dll path - point to GreenLuma DLL file  
+    content = re.sub(r'^Dll\s*=\s*.*$', f'Dll = {greenluma_dll_path}', content, flags=re.MULTILINE | re.IGNORECASE)
     
     # Write the updated content back to the file
     try:
         with open(injector_ini_path, 'w', encoding='utf-8') as f:
             f.write(content)
         print(f"  Successfully configured DLLInjector.ini")
-        print(f"  Steam directory: {steam_directory}")
-        print(f"  GreenLuma DLL directory: {greenluma_dll_directory}")
+        print(f"  Steam executable: {steam_exe_path}")
+        print(f"  GreenLuma DLL: {greenluma_dll_path}")
         print(f"  UseFullPathsFromIni: 1")
     except Exception as e:
         print(f"[Error] Failed to write DLLInjector.ini: {e}")
