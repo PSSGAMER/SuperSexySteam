@@ -16,10 +16,11 @@ import sys
 def parse_lua_for_depots(lua_path):
     """
     Reads a given .lua file and extracts all DepotIDs that have a corresponding
-    DepotKey. It specifically looks for the 'addappid(id, 1, "key")' format.
-
-    This function is designed to be resilient, ignoring comment lines and lines
-    that define AppIDs or DLCs without an associated decryption key.
+    DepotKey. Supports multiple Lua formats:
+    1. addappid() function calls: addappid(12345, 1, "HEXKEY")
+    2. Variable assignments: depot_12345_1 = "KEY123"
+    3. Table entries: ["12345"] = "KEY123"
+    4. Comment format: -- DepotID: 12345 Key: KEY123
 
     Args:
         lua_path (str): The full path to the .lua file to be parsed.
@@ -29,30 +30,40 @@ def parse_lua_for_depots(lua_path):
               and has the keys 'depot_id' and 'depot_key'. Returns an empty
               list if the file is not found or an error occurs.
     """
-    # This regex is crafted to match lines containing a depot with a key.
-    # - `^\s*addappid\(`: Matches the start of the line and the function name.
-    # - `(\d+)`: Captures the numeric DepotID (Group 1).
-    # - `,\s*1,\s*`: Ensures it's a line with the '1' parameter, which typically
-    #                indicates a depot with a key, not just a DLC definition.
-    # - `"([a-fA-F0-9]+)"`: Captures the hexadecimal DepotKey (Group 2).
-    depot_pattern = re.compile(r'^\s*addappid\((\d+),\s*1,\s*"([a-fA-F0-9]+)"\)')
+    # Multiple regex patterns to handle different Lua formats
+    patterns = [
+        # Pattern 1: addappid function calls: addappid(12345, 1, "HEXKEY")
+        re.compile(r'^\s*addappid\((\d+),\s*1,\s*"([a-zA-Z0-9]+)"\)'),
+        
+        # Pattern 2: Variable assignments: depot_12345_1 = "KEY123"
+        re.compile(r'^\s*depot_(\d+)(?:_\d+)?\s*=\s*"([a-zA-Z0-9]+)"'),
+        
+        # Pattern 3: Table entries: ["12345"] = "KEY123"
+        re.compile(r'^\s*\["(\d+)"\]\s*=\s*"([a-zA-Z0-9]+)"'),
+        
+        # Pattern 4: Simple assignments: 12345 = "KEY123"
+        re.compile(r'^\s*(\d+)\s*=\s*"([a-zA-Z0-9]+)"'),
+        
+        # Pattern 5: Comments with depot info: -- DepotID: 12345 Key: KEY123
+        re.compile(r'--\s*DepotID:\s*(\d+)\s+Key:\s*([a-zA-Z0-9]+)'),
+    ]
 
     extracted_depots = []
     try:
         with open(lua_path, 'r', encoding='utf-8') as f:
             for line in f:
-                # Ignore comment lines to avoid parsing them.
-                if line.strip().startswith('--'):
-                    continue
-
-                match = depot_pattern.match(line)
-                if match:
-                    depot_id = match.group(1)
-                    depot_key = match.group(2)
-                    extracted_depots.append({
-                        'depot_id': depot_id,
-                        'depot_key': depot_key
-                    })
+                # Try each pattern
+                for pattern in patterns:
+                    match = pattern.match(line)
+                    if match:
+                        depot_id = match.group(1)
+                        depot_key = match.group(2)
+                        extracted_depots.append({
+                            'depot_id': depot_id,
+                            'depot_key': depot_key
+                        })
+                        break  # Stop at first match for this line
+                        
     except FileNotFoundError:
         print(f"  [Warning] Could not find file during parsing: {lua_path}")
     except Exception as e:

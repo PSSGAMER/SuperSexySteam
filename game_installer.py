@@ -248,6 +248,161 @@ class GameInstaller:
             print(f"[ERROR] Uninstallation failed for AppID {app_id}: {e}")
         
         return result
+    
+    def validate_installation(self, app_id: str) -> Dict[str, any]:
+        """
+        Validate that a game is properly installed across all systems.
+        
+        Args:
+            app_id (str): The Steam AppID to validate
+            
+        Returns:
+            Dict[str, any]: Validation result with detailed status
+        """
+        result = {
+            'valid': True,
+            'errors': [],
+            'warnings': [],
+            'components': {
+                'database': False,
+                'greenluma': False,
+                'config_vdf': False,
+                'manifests': False,
+                'acf': False
+            }
+        }
+        
+        try:
+            # Check database
+            if self.db.is_appid_exists(app_id):
+                result['components']['database'] = True
+            else:
+                result['errors'].append("AppID not found in database")
+                result['valid'] = False
+            
+            # Check GreenLuma
+            greenluma_path = self.config.get('Paths', 'greenluma_path', fallback='')
+            if greenluma_path and os.path.isdir(greenluma_path):
+                applist_dir = os.path.join(greenluma_path, 'NormalMode', 'AppList')
+                applist_file = os.path.join(applist_dir, f"{app_id}.txt")
+                if os.path.exists(applist_file):
+                    result['components']['greenluma'] = True
+                else:
+                    result['warnings'].append("AppID not found in GreenLuma AppList")
+            
+            # Check Steam config.vdf
+            steam_path = self.config.get('Paths', 'steam_path', fallback='')
+            if steam_path and os.path.isdir(steam_path):
+                from vdf_updater import get_existing_depot_keys
+                config_vdf_path = os.path.join(steam_path, 'config', 'config.vdf')
+                if os.path.exists(config_vdf_path):
+                    existing_keys = get_existing_depot_keys(config_vdf_path, verbose=False)
+                    if existing_keys:
+                        result['components']['config_vdf'] = True
+                    else:
+                        result['warnings'].append("No depot keys found in config.vdf")
+            
+            # Check manifests
+            if steam_path:
+                depotcache_path = os.path.join(steam_path, 'steamapps', 'depotcache')
+                if os.path.isdir(depotcache_path):
+                    manifest_count = len([f for f in os.listdir(depotcache_path) 
+                                        if f.endswith('.manifest')])
+                    if manifest_count > 0:
+                        result['components']['manifests'] = True
+                    else:
+                        result['warnings'].append("No manifest files found in depotcache")
+            
+            # Check ACF file
+            if steam_path:
+                steamapps_path = os.path.join(steam_path, 'steamapps')
+                acf_file = os.path.join(steamapps_path, f"appmanifest_{app_id}.acf")
+                if os.path.exists(acf_file):
+                    result['components']['acf'] = True
+                else:
+                    result['warnings'].append("ACF file not found")
+            
+        except Exception as e:
+            result['errors'].append(f"Validation error: {e}")
+            result['valid'] = False
+        
+        return result
+    
+    def get_installation_status(self, app_id: str = None) -> Dict[str, any]:
+        """
+        Get detailed installation status for one or all games.
+        
+        Args:
+            app_id (str, optional): Specific AppID to check, or None for all
+            
+        Returns:
+            Dict[str, any]: Installation status information
+        """
+        status = {
+            'total_games': 0,
+            'installed_games': 0,
+            'games': [],
+            'summary': {
+                'database_entries': 0,
+                'greenluma_entries': 0,
+                'config_vdf_depots': 0,
+                'manifest_files': 0,
+                'acf_files': 0
+            }
+        }
+        
+        try:
+            if app_id:
+                # Single game status
+                if self.db.is_appid_exists(app_id):
+                    game_info = {
+                        'app_id': app_id,
+                        'is_installed': True,
+                        'depots': self.db.get_appid_depots(app_id),
+                        'validation': self.validate_installation(app_id)
+                    }
+                    status['games'].append(game_info)
+                    status['total_games'] = 1
+                    status['installed_games'] = 1
+                else:
+                    status['total_games'] = 1
+                    status['installed_games'] = 0
+            else:
+                # All games status
+                all_appids = self.db.get_all_installed_appids()
+                status['total_games'] = len(all_appids)
+                status['installed_games'] = len(all_appids)
+                
+                for appid in all_appids:
+                    game_info = {
+                        'app_id': appid,
+                        'is_installed': True,
+                        'depots': self.db.get_appid_depots(appid),
+                        'validation': self.validate_installation(appid)
+                    }
+                    status['games'].append(game_info)
+            
+            # Generate summary statistics
+            status['summary']['database_entries'] = len(status['games'])
+            
+            # Count valid components across all games
+            for game in status['games']:
+                validation = game.get('validation', {})
+                components = validation.get('components', {})
+                
+                if components.get('greenluma'):
+                    status['summary']['greenluma_entries'] += 1
+                if components.get('config_vdf'):
+                    status['summary']['config_vdf_depots'] += len(game.get('depots', []))
+                if components.get('manifests'):
+                    status['summary']['manifest_files'] += 1
+                if components.get('acf'):
+                    status['summary']['acf_files'] += 1
+        
+        except Exception as e:
+            status['error'] = f"Failed to get installation status: {e}"
+        
+        return status
 
 
 # =============================================================================

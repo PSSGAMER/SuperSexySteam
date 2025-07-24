@@ -31,7 +31,7 @@ class GameDatabaseManager:
         """Initialize the database schema."""
         with self._lock:
             try:
-                conn = sqlite3.connect(self.db_path)
+                conn = self._get_connection()
                 cursor = conn.cursor()
                 
                 # Create AppIDs table
@@ -66,6 +66,61 @@ class GameDatabaseManager:
                 print(f"[Error] Failed to initialize database: {e}")
                 raise
     
+    def _get_connection(self):
+        """Get a database connection with proper configuration and corruption checking."""
+        try:
+            conn = sqlite3.connect(self.db_path, timeout=30.0)
+            
+            # Test database integrity
+            cursor = conn.cursor()
+            cursor.execute('PRAGMA integrity_check')
+            integrity_result = cursor.fetchone()[0]
+            
+            if integrity_result != 'ok':
+                print(f"[Warning] Database corruption detected: {integrity_result}")
+                conn.close()
+                return self._handle_database_corruption()
+            
+            # Configure connection for optimal performance and foreign key enforcement
+            conn.execute('PRAGMA foreign_keys=ON')
+            conn.execute('PRAGMA journal_mode=WAL')
+            conn.execute('PRAGMA synchronous=NORMAL')
+            conn.execute('PRAGMA cache_size=1000')
+            conn.execute('PRAGMA temp_store=memory')
+            return conn
+            
+        except sqlite3.DatabaseError as e:
+            print(f"[Error] Database error: {e}")
+            return self._handle_database_corruption()
+    
+    def _handle_database_corruption(self):
+        """Handle database corruption by creating a backup and rebuilding."""
+        import shutil
+        from datetime import datetime
+        
+        # Create backup of corrupted database
+        backup_path = f"{self.db_path}.corrupted_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        try:
+            if os.path.exists(self.db_path):
+                shutil.copy2(self.db_path, backup_path)
+                print(f"[Info] Corrupted database backed up to: {backup_path}")
+                os.remove(self.db_path)
+        except Exception as e:
+            print(f"[Warning] Could not backup corrupted database: {e}")
+        
+        # Reinitialize database
+        print("[Info] Rebuilding database from scratch...")
+        self._init_database()
+        
+        # Return new connection
+        conn = sqlite3.connect(self.db_path, timeout=30.0)
+        conn.execute('PRAGMA foreign_keys=ON')
+        conn.execute('PRAGMA journal_mode=WAL')
+        conn.execute('PRAGMA synchronous=NORMAL')
+        conn.execute('PRAGMA cache_size=1000')
+        conn.execute('PRAGMA temp_store=memory')
+        return conn
+
     def add_appid_with_depots(self, app_id: str, depots: List[Dict[str, str]]) -> bool:
         """
         Add an AppID with its associated depots to the database.
@@ -77,9 +132,13 @@ class GameDatabaseManager:
         Returns:
             bool: True if successful, False otherwise
         """
+        # Validate input
+        if not app_id or not isinstance(app_id, str) or not app_id.strip():
+            raise ValueError("app_id must be a non-empty string")
+            
         with self._lock:
             try:
-                conn = sqlite3.connect(self.db_path)
+                conn = self._get_connection()
                 cursor = conn.cursor()
                 
                 # Insert or update the AppID
@@ -103,12 +162,14 @@ class GameDatabaseManager:
                         ''', (depot_id, app_id, decryption_key))
                 
                 conn.commit()
-                conn.close()
                 return True
                 
             except sqlite3.Error as e:
                 print(f"[Error] Failed to add AppID {app_id} with depots: {e}")
                 return False
+            finally:
+                if 'conn' in locals():
+                    conn.close()
     
     def remove_appid(self, app_id: str) -> bool:
         """
@@ -122,19 +183,21 @@ class GameDatabaseManager:
         """
         with self._lock:
             try:
-                conn = sqlite3.connect(self.db_path)
+                conn = self._get_connection()
                 cursor = conn.cursor()
                 
                 # Remove the AppID (CASCADE will remove associated depots)
                 cursor.execute('DELETE FROM appids WHERE app_id = ?', (app_id,))
                 
                 conn.commit()
-                conn.close()
                 return True
                 
             except sqlite3.Error as e:
                 print(f"[Error] Failed to remove AppID {app_id}: {e}")
                 return False
+            finally:
+                if 'conn' in locals():
+                    conn.close()
     
     def mark_appid_uninstalled(self, app_id: str) -> bool:
         """
@@ -148,7 +211,7 @@ class GameDatabaseManager:
         """
         with self._lock:
             try:
-                conn = sqlite3.connect(self.db_path)
+                conn = self._get_connection()
                 cursor = conn.cursor()
                 
                 cursor.execute('''
@@ -157,12 +220,14 @@ class GameDatabaseManager:
                 ''', (app_id,))
                 
                 conn.commit()
-                conn.close()
                 return True
                 
             except sqlite3.Error as e:
                 print(f"[Error] Failed to mark AppID {app_id} as uninstalled: {e}")
                 return False
+            finally:
+                if 'conn' in locals():
+                    conn.close()
     
     def is_appid_exists(self, app_id: str) -> bool:
         """
@@ -176,7 +241,7 @@ class GameDatabaseManager:
         """
         with self._lock:
             try:
-                conn = sqlite3.connect(self.db_path)
+                conn = self._get_connection()
                 cursor = conn.cursor()
                 
                 cursor.execute('SELECT 1 FROM appids WHERE app_id = ? LIMIT 1', (app_id,))
@@ -201,7 +266,7 @@ class GameDatabaseManager:
         """
         with self._lock:
             try:
-                conn = sqlite3.connect(self.db_path)
+                conn = self._get_connection()
                 cursor = conn.cursor()
                 
                 cursor.execute('''
@@ -235,7 +300,7 @@ class GameDatabaseManager:
         """
         with self._lock:
             try:
-                conn = sqlite3.connect(self.db_path)
+                conn = self._get_connection()
                 cursor = conn.cursor()
                 
                 cursor.execute('SELECT app_id FROM appids WHERE is_installed = 1 ORDER BY app_id')
@@ -257,7 +322,7 @@ class GameDatabaseManager:
         """
         with self._lock:
             try:
-                conn = sqlite3.connect(self.db_path)
+                conn = self._get_connection()
                 cursor = conn.cursor()
                 
                 cursor.execute('''
@@ -293,7 +358,7 @@ class GameDatabaseManager:
         """
         with self._lock:
             try:
-                conn = sqlite3.connect(self.db_path)
+                conn = self._get_connection()
                 cursor = conn.cursor()
                 
                 cursor.execute('''
@@ -323,7 +388,7 @@ class GameDatabaseManager:
         """
         with self._lock:
             try:
-                conn = sqlite3.connect(self.db_path)
+                conn = self._get_connection()
                 cursor = conn.cursor()
                 
                 # Get total AppIDs

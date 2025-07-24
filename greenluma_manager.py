@@ -112,40 +112,54 @@ def get_greenluma_applist_stats(gl_path, verbose=True):
         verbose (bool): Whether to print information.
 
     Returns:
-        dict: Statistics with keys: 'total_files', 'appids', 'depots', 'other'
+        dict: Statistics with keys: 'total_files', 'appids', 'depots', 'other', 'total_applist_files'
     """
-    stats = {'total_files': 0, 'appids': 0, 'depots': 0, 'other': 0}
+    stats = {'total_files': 0, 'appids': 0, 'depots': 0, 'other': 0, 'total_applist_files': 0}
     
     applist_dir = os.path.join(gl_path, 'NormalMode', 'AppList')
     if not os.path.isdir(applist_dir):
         if verbose:
-            print(f"[Warning] GreenLuma AppList directory not found: {applist_dir}")
+            print(f"[Info] GreenLuma AppList directory not found or empty: {applist_dir}")
+            print(f"[Info] This is normal for a fresh installation or test environment")
+        stats['total_applist_files'] = 0
         return stats
 
     try:
-        for filename in os.listdir(applist_dir):
-            if filename.endswith('.txt'):
-                stats['total_files'] += 1
-                filepath = os.path.join(applist_dir, filename)
-                try:
-                    with open(filepath, 'r', encoding='utf-8') as f:
-                        content = f.read().strip()
-                        if content.isdigit():
-                            # Heuristic: shorter numbers are likely AppIDs, longer ones are DepotIDs
-                            if len(content) <= 7:  # Typical AppID length
-                                stats['appids'] += 1
-                            else:  # Likely DepotID
-                                stats['depots'] += 1
-                        else:
-                            stats['other'] += 1
-                except Exception:
-                    stats['other'] += 1
+        all_files = os.listdir(applist_dir)
+        txt_files = [f for f in all_files if f.endswith('.txt')]
+        stats['total_applist_files'] = len(txt_files)
+        
+        if not txt_files:
+            if verbose:
+                print(f"[Info] No AppList files found in {applist_dir}")
+                print(f"[Info] This is expected for a new installation or test environment")
+            return stats
+        
+        for filename in txt_files:
+            stats['total_files'] += 1
+            filepath = os.path.join(applist_dir, filename)
+            try:
+                with open(filepath, 'r', encoding='utf-8') as f:
+                    content = f.read().strip()
+                    if content.isdigit():
+                        # Heuristic: shorter numbers are likely AppIDs, longer ones are DepotIDs
+                        if len(content) <= 7:  # Typical AppID length
+                            stats['appids'] += 1
+                        else:  # Likely DepotID
+                            stats['depots'] += 1
+                    else:
+                        stats['other'] += 1
+            except Exception:
+                stats['other'] += 1
         
         if verbose:
-            print(f"GreenLuma AppList stats: {stats['total_files']} files total")
-            print(f"  - Estimated AppIDs: {stats['appids']}")
-            print(f"  - Estimated DepotIDs: {stats['depots']}")
-            print(f"  - Other entries: {stats['other']}")
+            if stats['total_files'] > 0:
+                print(f"GreenLuma AppList stats: {stats['total_files']} files total")
+                print(f"  - Estimated AppIDs: {stats['appids']}")
+                print(f"  - Estimated DepotIDs: {stats['depots']}")
+                print(f"  - Other entries: {stats['other']}")
+            else:
+                print(f"[Info] GreenLuma AppList directory exists but contains no .txt files")
         
         return stats
     except Exception as e:
