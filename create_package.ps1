@@ -32,7 +32,6 @@ $FilesToExclude = @(
     "install_launcher.bat",
     "install_config.ps1",
     "create_package.ps1",
-    "fix_shortcuts.ps1",
     "INSTALLER_README.md",
     "__pycache__",
     "*.zip"
@@ -140,8 +139,6 @@ $InstallerFiles = @(
     "install.ps1", 
     "install_launcher.bat",
     "install_config.ps1",
-    "fix_shortcuts.ps1",
-    "fix_shortcuts.bat",
     "INSTALLER_README.md"
 )
 
@@ -183,5 +180,4 @@ if (Test-Path $ReleasePath) {
 Write-Host "To distribute SuperSexySteam:" -ForegroundColor Yellow
 Write-Host "1. Share the release.zip file - it contains everything needed" -ForegroundColor White
 Write-Host "2. Users extract release.zip and run install_launcher.bat" -ForegroundColor White
-Write-Host "3. If users have shortcut issues, they can run fix_shortcuts.ps1" -ForegroundColor White
 Write-Host ""
