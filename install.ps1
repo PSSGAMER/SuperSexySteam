@@ -161,7 +161,7 @@ $WshShell = New-Object -comObject WScript.Shell
 
 # SuperSexySteam shortcut
 $Shortcut = $WshShell.CreateShortcut("$DesktopDir\SuperSexySteam.lnk")
-$Shortcut.TargetPath = "$InstallDir\venv\Scripts\pythonw.exe"
+$Shortcut.TargetPath = "$InstallDir\venv\Scripts\python.exe"
 $Shortcut.Arguments = "`"$InstallDir\SuperSexySteam.py`""
 $Shortcut.WorkingDirectory = $InstallDir
 # Use ICO file if available
@@ -173,7 +173,7 @@ $Shortcut.Save()
 
 # Refresher shortcut
 $Shortcut = $WshShell.CreateShortcut("$DesktopDir\SuperSexySteam Refresher.lnk")
-$Shortcut.TargetPath = "$InstallDir\venv\Scripts\pythonw.exe"
+$Shortcut.TargetPath = "$InstallDir\venv\Scripts\python.exe"
 $Shortcut.Arguments = "`"$InstallDir\refresh.py`""
 $Shortcut.WorkingDirectory = $InstallDir
 # Use ICO file if available
