@@ -102,8 +102,13 @@ def update_greenluma_applist(gl_path, new_appids, new_depots):
     print(f"\nProcessing GreenLuma AppList: {gl_path}")
     applist_dir = os.path.join(gl_path, 'NormalMode', 'AppList')
     if not os.path.isdir(applist_dir):
-        print(f"[Error] GreenLuma AppList directory not found: {applist_dir}")
-        return
+        print(f"[Warning] GreenLuma AppList directory not found: {applist_dir}")
+        try:
+            os.makedirs(applist_dir, exist_ok=True)
+            print(f"[Info] Created missing AppList directory: {applist_dir}")
+        except Exception as e:
+            print(f"[Error] Could not create AppList directory: {e}")
+            return
 
     # Find the next available index for a new file.
     indices = [int(os.path.splitext(f)[0]) for f in os.listdir(applist_dir) if os.path.splitext(f)[0].isdigit() and f.endswith('.txt')]
