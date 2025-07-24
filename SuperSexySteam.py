@@ -676,12 +676,6 @@ if __name__ == "__main__":
         except Exception:
             pass  # Silently ignore if hiding console fails
     
-    # Ensure GreenLuma DLLInjector.ini is properly configured
-    steam_path = config.get('Paths', 'steam_path', fallback='')
-    gl_path = config.get('Paths', 'greenluma_path', fallback='')
-    if steam_path and gl_path:
-        configure_greenluma_injector(steam_path, gl_path)
-    
     app = App(config)
     app.mainloop()
 
