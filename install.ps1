@@ -139,7 +139,7 @@ $RequiredFiles = @(
     "$InstallDir\SuperSexySteam.py",
     "$InstallDir\refresh.py", 
     "$InstallDir\GreenLuma\NormalMode\DLLInjector.exe",
-    "$InstallDir\venv\Scripts\pythonw.exe"
+    "$InstallDir\venv\Scripts\python.exe"
 )
 
 $MissingFiles = @()
