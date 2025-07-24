@@ -1,89 +1,267 @@
 # SuperSexySteam
 
-This is a tool that makes use of the lack of verification to download games, and works in conjunction with GreenLuma. This is a beta release. I have packed GreenLuma by Steam006 with my code for convenience. Steam006 can contact me if they have issues with it and I will remove it. The eventual plan is to move away from GreenLuma due to its closed source nature and implement my own emulator. I don't have enough knowledge currently to do so
+A powerful tool for Steam depot management that works in conjunction with GreenLuma. This tool helps you manage Steam depot files and provides an intuitive interface for processing .lua and .manifest files.
 
-## ⚠️ Why is this in Beta?
+## ⚠️ Project Status
 
-This project is currently in beta due to compilation challenges. I'm experiencing trouble compiling all the code into a single executable file (.exe). Once I'm able to successfully compile everything into a standalone executable, I will release the official v1.0. Until then, the project remains in beta and requires manual setup with Python dependencies. I will look into any PRs that help me with this, and also with anything in general. If you have an improvement, dont hesitate to make a PR
+This project is currently in beta due to compilation challenges. The goal is to compile everything into a single executable file (.exe) for the official v1.0 release. Until then, the project requires manual Python setup or you can use the provided installer.
 
-## 🚀 Getting Started
+**Note:** GreenLuma by Steam006 is included for convenience. If Steam006 has any concerns, please contact me and I will remove it. The eventual plan is to implement a custom emulator solution.
 
-Follow these instructions to get a copy of SuperSexySteam up and running on your local machine.
+---
 
-### Prerequisites
+## 📋 Table of Contents
 
-Before you begin, ensure you have the following software installed on your system:
+- [🎯 Quick Start (Recommended)](#-quick-start-recommended)
+- [🔧 Run from Source](#-run-from-source) 
+- [📦 Build Distribution Package](#-build-distribution-package)
+- [🎮 How to Use SuperSexySteam](#-how-to-use-supersexystemsteam)
+- [⚙️ Prerequisites](#️-prerequisites)
+- [🔧 Common Workflow](#-common-workflow)
+- [🚀 Planned Features](#-planned-features)
+- [🤝 Contributing](#-contributing)
 
-*   **Python:** Version 3.8 or newer. You can download it from [python.org](https://www.python.org/downloads/).
-*   **Git:** Required to clone the repository. You can download it from [git-scm.com](https://git-scm.com/downloads).
+---
 
-### Installation
+## 🎯 Quick Start (Recommended)
 
-These steps will guide you through cloning the repository and setting up a clean, isolated environment for the project.
+### For End Users - Download Release
 
-1.  **Clone the Repository**
+The easiest way to install SuperSexySteam is using the automated installer:
 
-    Open your terminal or command prompt and run the following command to download the project files:
-    ```sh
-    git clone https://github.com/PSSGAMER/SuperSexySteam.git
-    ```
+1. **Download the latest release** from the [Releases page](https://github.com/PSSGAMER/SuperSexySteam/releases)
+2. **Extract the installer package** to any folder
+3. **Run the installer** by double-clicking `install_launcher.bat`
+4. **Follow the installation prompts** - the installer will:
+   - Extract SuperSexySteam to `C:\Program Files (x86)\SuperSexySteam`
+   - Create a Python virtual environment
+   - Install all required dependencies
+   - Create desktop shortcuts for easy access
 
-2.  **Navigate to the Project Directory**
+**Requirements:** Windows 10/11, Python 3.8+, Administrator privileges
 
-    Change your current directory to the newly created project folder:
-    ```sh
-    cd SuperSexySteam
-    ```
+📖 **Need help?** See the included `INSTALLER_README.md` for detailed installation instructions and troubleshooting.
 
-3.  **Create a Virtual Environment**
+---
 
-    It is highly recommended to use a virtual environment to keep project dependencies isolated from your system's global Python installation. Run the following command:
-    ```sh
-    python -m venv venv
-    ```
-    This creates a new folder named `venv` in your project directory.
+## 🔧 Run from Source
 
-4.  **Activate the Virtual Environment**
+### For Developers and Advanced Users
 
-    You must activate the environment before installing packages. The command differs based on your operating system.
+If you want to run SuperSexySteam directly from source code:
 
-    *   **On Windows (Command Prompt or PowerShell):**
-        ```sh
-        venv\Scripts\activate
-        ```
+#### Prerequisites
+- **Python 3.8 or newer** - Download from [python.org](https://www.python.org/downloads/)
+- **Git** - Download from [git-scm.com](https://git-scm.com/downloads)
 
-    Your terminal prompt should now be prefixed with `(venv)`, indicating the environment is active.
+#### Setup Instructions
 
-5.  **Install Required Packages**
+1. **Clone the Repository**
+   ```bash
+   git clone https://github.com/PSSGAMER/SuperSexySteam.git
+   cd SuperSexySteam
+   ```
 
-    With your virtual environment active, use `pip` to install the necessary Python libraries for the application:
-    ```sh
-    pip install customtkinter tkinterdnd2 Pillow steam protobuf==3.20.3 gevent-eventemitter
-    ```
+2. **Create Virtual Environment**
+   ```bash
+   python -m venv venv
+   ```
 
-### Running the Application
+3. **Activate Virtual Environment**
+   
+   **Windows:**
+   ```bash
+   venv\Scripts\activate
+   ```
+   
+   **Linux/Mac:**
+   ```bash
+   source venv/bin/activate
+   ```
 
-Once the setup is complete, you can launch SuperSexySteam with a single command:
+4. **Install Dependencies**
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-```sh
-python SuperSexySteam.py
+5. **Run the Application**
+   ```bash
+   python SuperSexySteam.py
+   ```
+
+#### Alternative: Direct Dependency Installation
+```bash
+pip install customtkinter tkinterdnd2 Pillow steam protobuf==3.20.3 gevent-eventemitter
 ```
 
-#### First-Time Setup
+---
 
-The very first time you run the application, it will detect that `config.ini` is missing and will guide you through a one-time setup:
+## 📦 Build Distribution Package
 
-1.  A pop-up window will ask for your **Steam installation path**. You can leave it empty to use the default (`C:\Program Files (x86)\Steam`).
-2.  A second pop-up will ask for your **GreenLuma directory**. You can leave it empty to default to a `GreenLuma` folder present inside the project directory.
+### For Contributors and Distributors
 
-After confirming these paths, the settings will be saved to `config.ini`, and the main application will launch. This setup process will not occur on subsequent launches.
+To create a distribution package with the installer:
 
-## 🎮 Starting Steam with GreenLuma
+1. **Ensure you have the source code** (see "Run from Source" section)
 
-To run Steam with the SuperSexySteam setup:
+2. **Create the distribution package**
+   ```powershell
+   # Run the package creation script
+   powershell -ExecutionPolicy Bypass -File create_package.ps1
+   ```
+   
+   Or double-click `create_package.ps1` in Windows Explorer.
 
-1.  **Launch GreenLuma:** Navigate to the `GreenLuma/NormalMode` folder and double-click on `DLLInjector.exe` to start Steam with GreenLuma integration.
+3. **Package Contents**
+   This creates `SuperSexySteam.zip` containing:
+   - All Python source files
+   - Required assets (icons, etc.)
+   - GreenLuma integration files
+   - Requirements file
 
-2.  **Run Refresh Script:** Always run the refresh script before starting Steam. You should also run it anytime you encounter problems while downloading games. This ensures your cache and configuration are properly synchronized.
+4. **Create Distribution Folder**
+   For release, include these files together:
+   ```
+   SuperSexySteam_Release/
+   ├── SuperSexySteam.zip          (created by package script)
+   ├── install_launcher.bat        (main installer)
+   ├── install.ps1                 (PowerShell installer)
+   ├── install_config.ps1          (customizable installer)
+   └── INSTALLER_README.md         (installation guide)
+   ```
 
-**Important:** Make sure to run the refresh script whenever you experience download issues or before each Steam session for optimal performance.
+---
+
+## 🎮 How to Use SuperSexySteam
+
+### First-Time Setup
+
+When you launch SuperSexySteam for the first time:
+
+1. **Steam Path Configuration**
+   - You'll be prompted to enter your Steam installation path
+   - Default: `C:\Program Files (x86)\Steam`
+   - Leave empty to use the default
+
+2. **GreenLuma Path Configuration**
+   - Specify your GreenLuma directory
+   - Default: `GreenLuma` folder in the project directory
+   - Leave empty to use the default
+
+These settings are saved to `config.ini` and won't be asked again.
+
+### Using the Main Application
+
+1. **Launch SuperSexySteam**
+   - From desktop shortcut (if installed via installer)
+   - Or run: `python SuperSexySteam.py` (if running from source)
+
+2. **Add Depot Files**
+   - Drag and drop `.lua` files (named as `<AppID>.lua`)
+   - Include any associated `.manifest` files
+   - Files are organized into `data/<AppID>/` directories
+
+3. **Apply Changes**
+   - Click the "Apply" button when ready
+   - The system will categorize new vs. updated AppIDs
+   - Data processing script runs automatically
+
+### Database Refresh
+
+**Important:** Always run the refresh script before starting Steam:
+
+1. **Run SuperSexySteam Refresher**
+   - From desktop shortcut: "SuperSexySteam Refresher"
+   - Or run: `python refresh.py`
+
+2. **What it does:**
+   - Updates Steam's depot configuration
+   - Refreshes the depot cache
+   - Synchronizes all .manifest files
+
+### Starting Steam with GreenLuma
+
+1. **Launch DLL Injector**
+   - From desktop shortcut: "DLL Injector"
+   - Or navigate to `GreenLuma/NormalMode/` and run `DLLInjector.exe`
+
+2. **Steam Integration**
+   - This starts Steam with GreenLuma integration
+   - Allows access to configured depots
+
+---
+
+## ⚙️ Prerequisites
+
+### System Requirements
+- **Operating System:** Windows 7+ (Windows 10/11 recommended)
+- **Python:** Version 3.8 or newer
+- **RAM:** 4GB minimum, 8GB recommended
+- **Storage:** 500MB free space (more for game depots)
+
+### Software Dependencies
+- **Python Packages:** (automatically installed)
+  - `customtkinter` - Modern UI framework
+  - `tkinterdnd2` - Drag and drop support
+  - `Pillow` - Image processing
+  - `steam` - Steam API integration
+  - `protobuf==3.20.3` - Protocol buffer support
+  - `gevent-eventemitter` - Event handling
+
+### Optional Tools
+- **Git** - For cloning the repository (development only)
+- **PowerShell** - For running installation scripts (Windows 7+ has this built-in)
+
+---
+
+## 🔧 Common Workflow
+
+Here's the typical workflow for using SuperSexySteam:
+
+1. **Setup** (one-time)
+   - Install SuperSexySteam using the installer
+   - Or set up development environment from source
+
+2. **Add Content**
+   - Launch SuperSexySteam
+   - Drag `.lua` and `.manifest` files into the interface
+   - Click "Apply" to process
+
+3. **Refresh Database**
+   - Run "SuperSexySteam Refresher" before each Steam session
+   - This ensures your configuration is up-to-date
+
+4. **Start Steam**
+   - Launch "DLL Injector" to start Steam with GreenLuma
+   - Your configured depots will be available
+
+5. **Troubleshooting**
+   - Re-run the refresher if you encounter download issues
+   - Check that all files are properly configured
+
+---
+
+## 🚀 Planned Features
+
+The following features are planned for future releases:
+
+### 📊 Enhanced Shared Depot Handling
+
+### 🔧 Improved Installer System
+
+### 🔄 Auto-Updater
+
+### 🎯 Additional Enhancements
+- **Improved UI/UX:** More intuitive interface with better visual feedback
+- **Custom Emulator:** Move away from GreenLuma dependency with a custom solution
+- **Enhanced Logging:** Better debugging and troubleshooting capabilities
+
+---
+
+## 🤝 Contributing
+
+Contributions are welcome! If you have improvements or can help with compilation into a standalone executable, please don't hesitate to make a Pull Request.
+
+## 📄 License
+
+This project is provided as-is for educational and research purposes. Please respect game developers and publishers by purchasing games you enjoy.
