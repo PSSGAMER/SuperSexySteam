@@ -61,6 +61,63 @@ def parse_lua_for_depots(lua_path):
     return extracted_depots
 
 
+def parse_lua_for_all_depots(lua_path):
+    """
+    Reads a given .lua file and extracts all DepotIDs from addappid calls,
+    regardless of whether they have decryption keys or not.
+    
+    This function is used for GreenLuma AppList processing where we need
+    all depot IDs, not just those with keys.
+
+    Args:
+        lua_path (str): The full path to the .lua file to be parsed.
+
+    Returns:
+        list: A list of dictionaries. Each dictionary represents a found depot
+              and has the key 'depot_id' and optionally 'depot_key'. Returns an empty
+              list if the file is not found or an error occurs.
+    """
+    # This regex matches any addappid line, with or without a key
+    depot_pattern_with_key = re.compile(r'^\s*addappid\((\d+),\s*1,\s*"([a-fA-F0-9]+)"\)')
+    depot_pattern_without_key = re.compile(r'^\s*addappid\((\d+),?\s*[^,\)]*\)')
+
+    extracted_depots = []
+    try:
+        with open(lua_path, 'r', encoding='utf-8') as f:
+            for line in f:
+                # Ignore comment lines to avoid parsing them.
+                if line.strip().startswith('--'):
+                    continue
+
+                # First try to match patterns with keys
+                match_with_key = depot_pattern_with_key.match(line)
+                if match_with_key:
+                    depot_id = match_with_key.group(1)
+                    depot_key = match_with_key.group(2)
+                    extracted_depots.append({
+                        'depot_id': depot_id,
+                        'depot_key': depot_key
+                    })
+                    continue
+                
+                # Then try to match patterns without keys
+                match_without_key = depot_pattern_without_key.match(line)
+                if match_without_key:
+                    depot_id = match_without_key.group(1)
+                    # Only add if we haven't already added this depot with a key
+                    if not any(d['depot_id'] == depot_id for d in extracted_depots):
+                        extracted_depots.append({
+                            'depot_id': depot_id
+                        })
+                        
+    except FileNotFoundError:
+        print(f"  [Warning] Could not find file during parsing: {lua_path}")
+    except Exception as e:
+        print(f"  [Error] Failed to read or parse {os.path.basename(lua_path)}: {e}")
+
+    return extracted_depots
+
+
 def parse_all_lua_files(data_dir='data', verbose=True):
     """
     Scans the entire 'data' directory for .lua files and extracts all depot

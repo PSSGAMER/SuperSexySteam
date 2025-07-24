@@ -290,6 +290,85 @@ def delete_existing_manifests(steamapps_path, appids_to_delete):
         print(f"[Error] An unexpected error occurred while scanning for manifests to delete: {e}")
     print(f"Deleted {deleted_count} old manifest file(s).")
 
+def generate_acf_for_appid(steam_path: str, app_id: str) -> bool:
+    """
+    Generate an ACF file for a single AppID.
+    
+    Args:
+        steam_path (str): Path to Steam installation directory
+        app_id (str): The Steam AppID to generate ACF for
+        
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    try:
+        steamapps_path = Path(steam_path) / 'steamapps'
+        if not steamapps_path.is_dir():
+            print(f"[Error] The 'steamapps' directory could not be found at: {steamapps_path}")
+            return False
+        
+        print(f"[INFO] Generating ACF file for AppID {app_id}")
+        
+        # Remove any existing ACF file first
+        remove_acf_for_appid(steam_path, app_id)
+        
+        # Generate new ACF file
+        generator = ManifestGenerator()
+        try:
+            app_id_int = int(app_id)
+            generator.run_manifest_generator(app_id_int, steamapps_path)
+            print(f"[SUCCESS] ACF file generated for AppID {app_id}")
+            return True
+        except ValueError:
+            print(f"[Error] Invalid AppID '{app_id}' - must be numeric")
+            return False
+        except Exception as e:
+            print(f"[Error] Failed to generate ACF for AppID {app_id}: {e}")
+            return False
+            
+    except Exception as e:
+        print(f"[Error] Unexpected error generating ACF for AppID {app_id}: {e}")
+        return False
+
+
+def remove_acf_for_appid(steam_path: str, app_id: str) -> bool:
+    """
+    Remove the ACF file for a specific AppID.
+    
+    Args:
+        steam_path (str): Path to Steam installation directory
+        app_id (str): The Steam AppID to remove ACF for
+        
+    Returns:
+        bool: True if successful or file doesn't exist, False on error
+    """
+    try:
+        steamapps_path = Path(steam_path) / 'steamapps'
+        if not steamapps_path.is_dir():
+            print(f"[Error] The 'steamapps' directory could not be found at: {steamapps_path}")
+            return False
+        
+        # Find and remove the ACF file
+        acf_pattern = f"appmanifest_{app_id}.acf"
+        acf_path = steamapps_path / acf_pattern
+        
+        if acf_path.exists():
+            try:
+                acf_path.unlink()
+                print(f"[INFO] Removed ACF file: {acf_pattern}")
+                return True
+            except Exception as e:
+                print(f"[Error] Failed to remove ACF file {acf_pattern}: {e}")
+                return False
+        else:
+            print(f"[INFO] ACF file not found for AppID {app_id}: {acf_pattern}")
+            return True  # Not existing is considered success for removal
+            
+    except Exception as e:
+        print(f"[Error] Unexpected error removing ACF for AppID {app_id}: {e}")
+        return False
+
+
 def main():
     """
     The main orchestrator function for the script.

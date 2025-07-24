@@ -257,6 +257,153 @@ def update_config_vdf_for_appids(config_path, appids, data_dir='data', create_ba
     # Use the existing update_config_vdf function
     return update_config_vdf(config_path, depot_keys, create_backup, verbose)
 
+
+def add_depots_to_config_vdf(config_path, depots, create_backup=True, verbose=True):
+    """
+    Add depot decryption keys to Steam's config.vdf file.
+    
+    Args:
+        config_path (str): The full path to Steam's config.vdf file
+        depots (list): List of depot dictionaries with 'depot_id' and 'depot_key'
+        create_backup (bool): Whether to create a backup of the original file
+        verbose (bool): Whether to print progress information
+        
+    Returns:
+        bool: True if the update was successful, False otherwise
+    """
+    if verbose:
+        print(f"Adding depots to Steam config: {config_path}")
+    
+    if not os.path.exists(config_path):
+        if verbose:
+            print("[Error] config.vdf not found at the specified path.")
+        return False
+
+    if not depots:
+        if verbose:
+            print("[Warning] No depot data provided. Skipping config.vdf update.")
+        return True  # No depots to add is considered success
+
+    try:
+        # Convert depots list to dictionary format
+        depot_keys = {}
+        for depot in depots:
+            if 'depot_key' in depot:
+                depot_keys[depot['depot_id']] = depot['depot_key']
+        
+        if not depot_keys:
+            if verbose:
+                print("[Info] No depot keys to add to config.vdf")
+            return True
+        
+        # Use existing update function
+        return update_config_vdf(config_path, depot_keys, create_backup, verbose)
+        
+    except Exception as e:
+        if verbose:
+            print(f"[Error] Failed to add depots to config.vdf: {e}")
+        return False
+
+
+def remove_depots_from_config_vdf(config_path, depots, create_backup=True, verbose=True):
+    """
+    Remove depot decryption keys from Steam's config.vdf file.
+    
+    Args:
+        config_path (str): The full path to Steam's config.vdf file
+        depots (list): List of depot dictionaries with 'depot_id'
+        create_backup (bool): Whether to create a backup of the original file
+        verbose (bool): Whether to print progress information
+        
+    Returns:
+        bool: True if the removal was successful, False otherwise
+    """
+    if verbose:
+        print(f"Removing depots from Steam config: {config_path}")
+    
+    if not os.path.exists(config_path):
+        if verbose:
+            print("[Error] config.vdf not found at the specified path.")
+        return False
+
+    if not depots:
+        if verbose:
+            print("[Warning] No depot data provided. Skipping config.vdf update.")
+        return True  # No depots to remove is considered success
+
+    try:
+        # Load existing Steam config.vdf
+        if verbose:
+            print("  Reading existing config.vdf...")
+        with open(config_path, 'r', encoding='utf-8') as f:
+            config = vdf.load(f)
+
+        # Navigate through the VDF structure
+        if 'InstallConfigStore' not in config:
+            if verbose:
+                print("[Error] InstallConfigStore section not found in config.vdf")
+            return False
+            
+        software = config['InstallConfigStore']['Software']
+        
+        # Handle case-insensitive keys for Valve
+        valve = software.get('Valve') or software.get('valve')
+        if not valve:
+            if verbose:
+                print("[Warning] Valve section not found in config.vdf")
+            return True  # Nothing to remove
+            
+        # Handle case-insensitive keys for Steam
+        steam = valve.get('Steam') or valve.get('steam')
+        if not steam:
+            if verbose:
+                print("[Warning] Steam section not found in config.vdf")
+            return True  # Nothing to remove
+
+        # Check if depots section exists
+        if 'depots' not in steam:
+            if verbose:
+                print("[Info] No depots section found in config.vdf")
+            return True  # Nothing to remove
+
+        # Remove depot keys
+        removed_count = 0
+        for depot in depots:
+            depot_id = depot['depot_id']
+            if depot_id in steam['depots']:
+                del steam['depots'][depot_id]
+                removed_count += 1
+                if verbose:
+                    print(f"  - Removed depot key for {depot_id}")
+
+        if removed_count == 0:
+            if verbose:
+                print("[Info] No matching depot keys found to remove")
+            return True
+
+        # Backup original file if requested
+        if create_backup:
+            backup_path = config_path + '.bak'
+            if verbose:
+                print(f"  Backing up original config to {os.path.basename(backup_path)}")
+            shutil.copy2(config_path, backup_path)
+
+        # Write the updated VDF back to disk
+        if verbose:
+            print("  Writing updated config.vdf...")
+        with open(config_path, 'w', encoding='utf-8') as f:
+            vdf.dump(config, f, pretty=True)
+
+        if verbose:
+            print(f"  Successfully removed {removed_count} depot keys from config.vdf")
+        return True
+
+    except Exception as e:
+        if verbose:
+            print(f"[Error] Failed to remove depots from config.vdf: {e}")
+        return False
+
+
 # =============================================================================
 # --- MAIN EXECUTION ---
 # =============================================================================

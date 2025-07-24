@@ -466,6 +466,205 @@ def process_appids_for_greenluma(greenluma_path, new_appids, data_dir='data', ve
     return result
 
 
+def process_single_appid_for_greenluma(gl_path, app_id, depots, verbose=True):
+    """
+    Add a single AppID and its depots to the GreenLuma AppList.
+    
+    Args:
+        gl_path (str): Path to the main GreenLuma folder
+        app_id (str): The Steam AppID to add
+        depots (list): List of depot dictionaries for this AppID
+        verbose (bool): Whether to print progress information
+        
+    Returns:
+        dict: Result with success status, errors, and statistics
+    """
+    result = {
+        'success': False,
+        'errors': [],
+        'stats': {'appids_added': 0, 'depots_added': 0, 'files_created': 0}
+    }
+    
+    try:
+        if verbose:
+            print(f"\nAdding AppID {app_id} to GreenLuma AppList: {gl_path}")
+        
+        applist_dir = os.path.join(gl_path, 'NormalMode', 'AppList')
+        if not os.path.isdir(applist_dir):
+            try:
+                os.makedirs(applist_dir, exist_ok=True)
+                if verbose:
+                    print(f"[Info] Created missing AppList directory: {applist_dir}")
+            except Exception as e:
+                result['errors'].append(f"Could not create AppList directory: {e}")
+                return result
+        
+        # Find the next available index
+        try:
+            existing_files = os.listdir(applist_dir)
+            indices = [int(os.path.splitext(f)[0]) for f in existing_files 
+                      if f.endswith('.txt') and os.path.splitext(f)[0].isdigit()]
+            next_index = max(indices) + 1 if indices else 0
+        except Exception as e:
+            result['errors'].append(f"Could not determine next file index: {e}")
+            return result
+        
+        # Write AppID
+        appid_filename = f"{next_index}.txt"
+        appid_filepath = os.path.join(applist_dir, appid_filename)
+        try:
+            with open(appid_filepath, 'w', encoding='utf-8') as f:
+                f.write(f"{app_id}\n")
+            result['stats']['appids_added'] = 1
+            result['stats']['files_created'] += 1
+            if verbose:
+                print(f"  - Created {appid_filename} with AppID {app_id}")
+        except Exception as e:
+            result['errors'].append(f"Failed to write AppID file: {e}")
+            return result
+        
+        # Write depots
+        for depot in depots:
+            next_index += 1
+            depot_filename = f"{next_index}.txt"
+            depot_filepath = os.path.join(applist_dir, depot_filename)
+            try:
+                with open(depot_filepath, 'w', encoding='utf-8') as f:
+                    f.write(f"{depot['depot_id']}\n")
+                result['stats']['depots_added'] += 1
+                result['stats']['files_created'] += 1
+                if verbose:
+                    print(f"  - Created {depot_filename} with DepotID {depot['depot_id']}")
+            except Exception as e:
+                result['errors'].append(f"Failed to write depot file for {depot['depot_id']}: {e}")
+                # Continue with other depots even if one fails
+        
+        result['success'] = True
+        if verbose:
+            stats = result['stats']
+            print(f"  Successfully added AppID {app_id} with {stats['depots_added']} depots ({stats['files_created']} files created)")
+        
+    except Exception as e:
+        result['errors'].append(f"Unexpected error: {e}")
+    
+    return result
+
+
+def remove_appid_from_greenluma(gl_path, app_id, depots, verbose=True):
+    """
+    Remove a specific AppID and its depots from the GreenLuma AppList.
+    
+    Args:
+        gl_path (str): Path to the main GreenLuma folder
+        app_id (str): The Steam AppID to remove
+        depots (list): List of depot dictionaries for this AppID
+        verbose (bool): Whether to print progress information
+        
+    Returns:
+        dict: Result with success status, errors, and statistics
+    """
+    result = {
+        'success': False,
+        'errors': [],
+        'stats': {'appids_removed': 0, 'depots_removed': 0, 'files_removed': 0}
+    }
+    
+    try:
+        if verbose:
+            print(f"\nRemoving AppID {app_id} from GreenLuma AppList: {gl_path}")
+        
+        applist_dir = os.path.join(gl_path, 'NormalMode', 'AppList')
+        if not os.path.isdir(applist_dir):
+            if verbose:
+                print(f"[Warning] GreenLuma AppList directory not found: {applist_dir}")
+            result['success'] = True  # Nothing to remove is considered success
+            return result
+        
+        # Collect all IDs to remove (AppID + all depot IDs)
+        ids_to_remove = {app_id}
+        for depot in depots:
+            ids_to_remove.add(depot['depot_id'])
+        
+        # Read all existing files and identify which ones to remove
+        files_to_remove = []
+        remaining_files = []
+        
+        try:
+            existing_files = os.listdir(applist_dir)
+            txt_files = [f for f in existing_files if f.endswith('.txt')]
+            
+            for filename in txt_files:
+                filepath = os.path.join(applist_dir, filename)
+                try:
+                    with open(filepath, 'r', encoding='utf-8') as f:
+                        content = f.read().strip()
+                    
+                    if content in ids_to_remove:
+                        files_to_remove.append((filename, filepath, content))
+                        if content == app_id:
+                            result['stats']['appids_removed'] += 1
+                        else:
+                            result['stats']['depots_removed'] += 1
+                    else:
+                        remaining_files.append((filename, filepath, content))
+                        
+                except Exception as e:
+                    if verbose:
+                        print(f"[Warning] Could not read file {filename}: {e}")
+                    # Keep files we can't read
+                    remaining_files.append((filename, filepath, ""))
+        
+        except Exception as e:
+            result['errors'].append(f"Failed to scan AppList directory: {e}")
+            return result
+        
+        # Remove the identified files
+        for filename, filepath, content in files_to_remove:
+            try:
+                os.remove(filepath)
+                result['stats']['files_removed'] += 1
+                if verbose:
+                    print(f"  - Removed {filename} (contained {content})")
+            except Exception as e:
+                result['errors'].append(f"Failed to remove file {filename}: {e}")
+        
+        # Renumber remaining files to maintain sequential order (0, 1, 2, 3...)
+        if remaining_files:
+            # Sort by original index to maintain order
+            remaining_files.sort(key=lambda x: int(os.path.splitext(x[0])[0]) if os.path.splitext(x[0])[0].isdigit() else 999999)
+            
+            # Rename files to sequential indices
+            for i, (old_filename, old_filepath, content) in enumerate(remaining_files):
+                new_filename = f"{i}.txt"
+                new_filepath = os.path.join(applist_dir, new_filename)
+                
+                if old_filename != new_filename:
+                    try:
+                        # Create new file with correct name
+                        with open(new_filepath, 'w', encoding='utf-8') as f:
+                            f.write(f"{content}\n")
+                        
+                        # Remove old file if it's different
+                        if old_filepath != new_filepath:
+                            os.remove(old_filepath)
+                        
+                        if verbose:
+                            print(f"  - Renumbered {old_filename} -> {new_filename}")
+                            
+                    except Exception as e:
+                        result['errors'].append(f"Failed to renumber {old_filename} to {new_filename}: {e}")
+        
+        result['success'] = True
+        if verbose:
+            stats = result['stats']
+            print(f"  Successfully removed AppID {app_id}: {stats['appids_removed']} AppIDs, {stats['depots_removed']} depots ({stats['files_removed']} files removed)")
+        
+    except Exception as e:
+        result['errors'].append(f"Unexpected error: {e}")
+    
+    return result
+
+
 # =============================================================================
 # --- MAIN EXECUTION FOR STANDALONE USE ---
 # =============================================================================

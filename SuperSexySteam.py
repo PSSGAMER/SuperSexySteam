@@ -1,8 +1,8 @@
 # SuperSexySteam.py
 #
-# A graphical user interface (GUI) tool for managing and preparing Steam depot
-# files (.lua and .manifest) for further processing. This script serves as the
-# user-facing front-end.
+# A graphical user interface (GUI) tool for managing Steam depot files
+# (.lua and .manifest) with SQLite database backend. This script serves as the
+# user-facing front-end with real-time game installation/uninstallation.
 #
 # Workflow:
 # 1. On first launch, prompts the user to configure paths via modal dialogs.
@@ -11,18 +11,15 @@
 #    file (named <AppID>.lua) along with any associated .manifest files.
 # 3. The script organizes these files into a 'data/<AppID>/' directory structure,
 #    overwriting any existing data for that AppID.
-# 4. It tracks all unique AppIDs processed during the session.
-# 5. When the "Apply" button is clicked, it compares the session's AppIDs
-#    against a master list in 'config.ini' to determine which are "new" and
-#    which are "updated".
-# 6. This categorized list is written to 'data.ini', the master list in
-#    'config.ini' is updated, and a secondary script ('acfgen.py') is launched
-#    to handle the next stage of processing. The GUI then closes.
+# 4. For new AppIDs: Immediately installs the game by running the complete workflow.
+# 5. For existing AppIDs: First uninstalls the old version, then installs the new version.
+# 6. All operations are tracked in a SQLite database for persistence and efficiency.
 #
 # Dependencies:
 # - customtkinter: For the modern UI widgets.
 # - tkinterdnd2: To enable drag-and-drop functionality.
 # - Pillow (PIL): For dynamic image manipulation (header resizing and gradients).
+# - sqlite3: For database operations (built into Python).
 
 import customtkinter as ctk
 from tkinterdnd2 import DND_FILES, TkinterDnD
@@ -34,8 +31,10 @@ from PIL import Image, ImageDraw
 import sys
 import subprocess
 
-# Import our custom GreenLuma module
-from greenluma_manager import process_appids_for_greenluma, configure_greenluma_injector
+# Import our custom modules
+from greenluma_manager import configure_greenluma_injector
+from database_manager import get_database_manager
+from game_installer import GameInstaller
 
 
 # =============================================================================
@@ -214,9 +213,8 @@ class App(TkinterDnD.Tk):
     The main application class for SuperSexySteam.
 
     This class builds the GUI, handles all user interactions (drag-and-drop,
-    button clicks), tracks the state of processed AppIDs, and orchestrates
-    the final hand-off to the data processing script. It inherits from
-    TkinterDnD.Tk to enable drag-and-drop on the root window.
+    button clicks), manages the SQLite database, and orchestrates
+    real-time game installation and uninstallation operations.
     """
     def __init__(self, config: configparser.ConfigParser):
         """
@@ -229,15 +227,16 @@ class App(TkinterDnD.Tk):
         # Renamed to `app_config` to avoid collision with the built-in `self.config()` method.
         self.app_config = config
 
-        # This set stores all unique AppIDs dropped during the current session.
-        self.session_appids = set()
+        # Initialize database and game installer
+        self.db = get_database_manager()
+        self.game_installer = GameInstaller(config)
 
         # --- Window Configuration ---
         # The root window is a standard Tk object, so it uses 'background' for its color.
         self.configure(background=Theme.BG_DARK)
         self.title("SuperSexySteam")
-        self.geometry("600x650")
-        self.minsize(550, 600)
+        self.geometry("600x750")  # Made taller to accommodate database stats
+        self.minsize(550, 700)
         
         # --- Window Icon ---
         try:
@@ -267,10 +266,23 @@ class App(TkinterDnD.Tk):
             header_widget = ctk.CTkLabel(self, text="SuperSexySteam", font=("Impact", 48), text_color=Theme.GOLD, bg_color="transparent")
         header_widget.pack(pady=(20, 10))
 
+        # --- Database Stats Panel ---
+        self.stats_frame = ctk.CTkFrame(self, fg_color=Theme.BG_LIGHT, corner_radius=10)
+        self.stats_frame.pack(padx=20, pady=(0, 10), fill="x")
+        
+        stats_title = ctk.CTkLabel(self.stats_frame, text="Database Statistics", font=Theme.FONT_LARGE_BOLD, text_color=Theme.GOLD)
+        stats_title.pack(pady=(10, 5))
+        
+        self.stats_label = ctk.CTkLabel(self.stats_frame, text="Loading...", font=Theme.FONT_PRIMARY, text_color=Theme.TEXT_PRIMARY)
+        self.stats_label.pack(pady=(0, 10))
+        
+        # Update stats initially
+        self.update_database_stats()
+
         # --- Drop Zone ---
         # This outer frame's only purpose is to bind to the window resize event and hold the gradient.
         self.gradient_border_frame = ctk.CTkFrame(self, fg_color="transparent")
-        self.gradient_border_frame.pack(expand=True, fill="both", padx=20, pady=20)
+        self.gradient_border_frame.pack(expand=True, fill="both", padx=20, pady=10)
         self.gradient_border_frame.bind("<Configure>", self._update_gradient_border)
 
         # This inner frame is the actual drop target and holds the UI elements.
@@ -285,11 +297,21 @@ class App(TkinterDnD.Tk):
         self.info_label = ctk.CTkLabel(self.drop_frame, text="Drag and drop Lua + Manifest files here", font=Theme.FONT_LARGE_BOLD, text_color=Theme.TEXT_PRIMARY)
         self.info_label.place(relx=0.5, rely=0.7, anchor="center")
 
-        # --- Apply Button ---
-        self.apply_button = ctk.CTkButton(self, text="Apply", font=Theme.FONT_LARGE_BOLD, text_color=Theme.BG_DARK,
-                                           fg_color=Theme.GOLD, hover_color=Theme.DARK_GOLD, border_width=0,
-                                           corner_radius=8, command=self.on_apply_click)
-        self.apply_button.pack(pady=(0, 20), padx=20, fill="x", ipady=10)
+        # --- Action Buttons Frame ---
+        self.buttons_frame = ctk.CTkFrame(self, fg_color="transparent")
+        self.buttons_frame.pack(pady=(10, 0), padx=20, fill="x")
+
+        # --- Refresh Stats Button ---
+        self.refresh_button = ctk.CTkButton(self.buttons_frame, text="Refresh Stats", font=Theme.FONT_PRIMARY, text_color=Theme.BG_DARK,
+                                           fg_color=Theme.STATUS_SUCCESS, hover_color="#4caf50", border_width=0,
+                                           corner_radius=8, command=self.update_database_stats, width=120)
+        self.refresh_button.pack(side="left", padx=(0, 10))
+
+        # --- Clear Database Button ---
+        self.clear_db_button = ctk.CTkButton(self.buttons_frame, text="Clear Database", font=Theme.FONT_PRIMARY, text_color=Theme.TEXT_PRIMARY,
+                                            fg_color=Theme.STATUS_WARNING, hover_color="#ff9800", border_width=0,
+                                            corner_radius=8, command=self.on_clear_database_click, width=120)
+        self.clear_db_button.pack(side="left", padx=(0, 10))
 
         # --- Clear Data Button (small, positioned in top-right) ---
         self.clear_button = ctk.CTkButton(self, text="Clear Data", font=("Segoe UI", 10), text_color=Theme.TEXT_PRIMARY,
@@ -298,7 +320,7 @@ class App(TkinterDnD.Tk):
         self.clear_button.place(relx=0.98, rely=0.02, anchor="ne")
 
         # --- Status Label ---
-        self.status_label = ctk.CTkLabel(self, text="Ready for action.", font=Theme.FONT_PRIMARY,
+        self.status_label = ctk.CTkLabel(self, text="Ready for action. Drop files to install games instantly!", font=Theme.FONT_PRIMARY,
                                           text_color=Theme.TEXT_SECONDARY, bg_color="transparent")
         self.status_label.pack(side="bottom", fill="x", padx=20, pady=(0, 10))
 
@@ -325,139 +347,61 @@ class App(TkinterDnD.Tk):
             # interactive above the gradient label. This is a critical step.
             self.drop_frame.lift()
 
-    def on_apply_click(self):
+    def update_database_stats(self):
+        """Update the database statistics display."""
+        try:
+            stats = self.db.get_database_stats()
+            stats_text = f"Games: {stats['installed_appids']} installed | Depots: {stats['total_depots']} | With Keys: {stats['depots_with_keys']}"
+            self.stats_label.configure(text=stats_text)
+            print(f"[INFO] Database stats updated: {stats}")
+        except Exception as e:
+            self.stats_label.configure(text="Error loading database statistics")
+            print(f"[ERROR] Failed to update database stats: {e}")
+
+    def on_clear_database_click(self):
         """
-        Handles the "Apply" button click. This is the final action of the GUI.
-
-        It performs the following logic:
-        1. Checks if any AppIDs were processed in the session.
-        2. Reads the list of previously known AppIDs from config.ini.
-        3. Compares the session's AppIDs with the known list to categorize them
-           into 'new' and 'updated'.
-        4. Writes the categorized lists to 'data.ini' for acfgen.py.
-        5. Updates the master list of known AppIDs in 'config.ini'.
-        6. Processes GreenLuma AppList directly.
-        7. Launches 'acfgen.py' and closes itself.
+        Clear all entries from the database and reset the application.
         """
-        if not self.session_appids:
-            self.update_status("No AppIDs dropped in this session to apply.", "warning")
-            return
-
-        # Read the permanent record of known AppIDs.
-        known_ids_str = self.app_config.get('KnownAppIDs', 'ids', fallback='')
-        known_appids = set(known_ids_str.split(',')) if known_ids_str else set()
-
-        # Use set operations to efficiently categorize the session's AppIDs.
-        new_appids_for_data_ini = self.session_appids - known_appids
-        updated_appids_for_data_ini = self.session_appids.intersection(known_appids)
-
-        # Update the master list in config.ini with any new discoveries.
-        all_known_ids = known_appids.union(self.session_appids)
-        if not self.app_config.has_section('KnownAppIDs'):
-            self.app_config.add_section('KnownAppIDs')
-        self.app_config.set('KnownAppIDs', 'ids', ",".join(sorted(list(all_known_ids))))
-        with open('config.ini', 'w') as f:
-            self.app_config.write(f)
-
-        # Prepare the data for acfgen.py.
-        data_config = configparser.ConfigParser()
-        data_config['AppIDs'] = {
-            'new': ",".join(sorted(list(new_appids_for_data_ini))),
-            'updated': ",".join(sorted(list(updated_appids_for_data_ini)))
-        }
-        with open('data.ini', 'w') as f:
-            data_config.write(f)
-
-        self.update_status(f"Applied {len(new_appids_for_data_ini)} new, {len(updated_appids_for_data_ini)} updated IDs. Starting workflow...", "success")
-
-        # Import the required modules for the new workflow
-        from lua_parser import parse_lua_for_depots
-        from vdf_updater import update_config_vdf_for_appids
-        from depot_cache_manager import manage_depot_cache_for_appids
-
-        # Process all session AppIDs through the complete workflow
-        all_appids_to_process = list(self.session_appids)
-        total_steps = 4
+        self.update_status("Clearing database...", "warning")
         
-        # Step 1: Process GreenLuma AppList
-        self.update_status(f"Step 1/{total_steps}: Processing GreenLuma AppList...", "info")
         try:
-            greenluma_path = self.app_config.get('Paths', 'greenluma_path', fallback='')
-            if greenluma_path and os.path.isdir(greenluma_path):
-                result = process_appids_for_greenluma(greenluma_path, all_appids_to_process, 'data', verbose=True)
+            # Get all installed AppIDs for cleanup
+            installed_appids = self.db.get_all_installed_appids()
+            
+            if installed_appids:
+                self.update_status(f"Uninstalling {len(installed_appids)} games...", "warning")
                 
-                if result['success']:
-                    stats = result['stats']
-                    print(f"[Success] GreenLuma processing completed: {stats['appids_added']} AppIDs, {stats['depots_added']} depots")
-                    self.update_status(f"Step 1/{total_steps}: GreenLuma updated ({stats['appids_added']} AppIDs, {stats['depots_added']} depots)", "success")
-                else:
-                    for error in result['errors']:
-                        print(f"[Error] GreenLuma processing: {error}")
-                    self.update_status(f"Step 1/{total_steps}: GreenLuma processing had errors", "warning")
+                # Uninstall all games
+                for app_id in installed_appids:
+                    try:
+                        self.update_status(f"Uninstalling AppID {app_id}...", "info")
+                        result = self.game_installer.uninstall_game(app_id)
+                        if not result['success']:
+                            print(f"[WARNING] Failed to fully uninstall AppID {app_id}: {result['errors']}")
+                    except Exception as e:
+                        print(f"[ERROR] Error uninstalling AppID {app_id}: {e}")
+                
+                self.update_status(f"Database cleared. {len(installed_appids)} games uninstalled.", "success")
             else:
-                print(f"[Warning] GreenLuma path '{greenluma_path}' is invalid. Skipping AppList update.")
-                self.update_status(f"Step 1/{total_steps}: GreenLuma path invalid, skipped", "warning")
+                self.update_status("Database was already empty.", "info")
+            
+            # Update stats display
+            self.update_database_stats()
+            
         except Exception as e:
-            self.update_status(f"Step 1/{total_steps}: GreenLuma error: {e}", "error")
-            print(f"[Error] Failed to process GreenLuma: {e}")
-
-        # Step 2: Process depot cache for manifest files
-        self.update_status(f"Step 2/{total_steps}: Processing depot cache...", "info")
-        try:
-            steam_path = self.app_config.get('Paths', 'steam_path', fallback='')
-            if steam_path and os.path.isdir(steam_path):
-                cache_stats = manage_depot_cache_for_appids(steam_path, all_appids_to_process)
-                print(f"[Success] Depot cache processing: {cache_stats['copied_count']} files copied, {cache_stats['skipped_count']} files skipped")
-                self.update_status(f"Step 2/{total_steps}: Depot cache updated ({cache_stats['copied_count']} copied)", "success")
-            else:
-                print(f"[Warning] Steam path '{steam_path}' is invalid. Skipping depot cache update.")
-                self.update_status(f"Step 2/{total_steps}: Steam path invalid, skipped", "warning")
-        except Exception as e:
-            self.update_status(f"Step 2/{total_steps}: Depot cache error: {e}", "error")
-            print(f"[Error] Failed to process depot cache: {e}")
-
-        # Step 3: Update config.vdf for lua files
-        self.update_status(f"Step 3/{total_steps}: Updating Steam config.vdf...", "info")
-        try:
-            steam_path = self.app_config.get('Paths', 'steam_path', fallback='')
-            if steam_path and os.path.isdir(steam_path):
-                config_vdf_path = os.path.join(steam_path, 'config', 'config.vdf')
-                vdf_success = update_config_vdf_for_appids(config_vdf_path, all_appids_to_process)
-                if vdf_success:
-                    print("[Success] Steam config.vdf updated successfully")
-                    self.update_status(f"Step 3/{total_steps}: Steam config.vdf updated successfully", "success")
-                else:
-                    print("[Warning] Steam config.vdf update failed")
-                    self.update_status(f"Step 3/{total_steps}: Steam config.vdf update failed", "warning")
-            else:
-                print(f"[Warning] Steam path '{steam_path}' is invalid. Skipping config.vdf update.")
-                self.update_status(f"Step 3/{total_steps}: Steam path invalid, skipped", "warning")
-        except Exception as e:
-            self.update_status(f"Step 3/{total_steps}: Config.vdf error: {e}", "error")
-            print(f"[Error] Failed to update config.vdf: {e}")
-
-        # Step 4: Generate ACF files for AppIDs
-        self.update_status(f"Step 4/{total_steps}: Generating ACF files...", "info")
-        try:
-            # Launch acfgen.py in a new process and exit.
-            subprocess.Popen([sys.executable, "acfgen.py"])
-            self.update_status("All processing complete! ACF generator launched.", "success")
-            self.destroy()
-        except FileNotFoundError:
-            self.update_status("Error: 'acfgen.py' not found in script directory!", "error")
-        except Exception as e:
-            self.update_status(f"Failed to launch acfgen.py: {e}", "error")
+            self.update_status(f"Error clearing database: {e}", "error")
+            print(f"[ERROR] Failed to clear database: {e}")
 
     def on_clear_data_click(self):
         """
         Handles the "Clear Data" button click.
         
-        Deletes the config.ini and data.ini files to reset the application
+        Deletes the config.ini and database files to reset the application
         to its initial state, then terminates the script.
         """
-        self.update_status("Clearing data and resetting application...", "warning")
+        self.update_status("Clearing all data and resetting application...", "warning")
         
-        files_to_delete = ['config.ini', 'data.ini']
+        files_to_delete = ['config.ini', 'supersexyssteam.db']
         deleted_files = []
         
         for file_path in files_to_delete:
@@ -480,21 +424,20 @@ class App(TkinterDnD.Tk):
         self.destroy()
         sys.exit(0)
 
-    def on_update_detected(self, app_id: str):
-        """A hook called when a drop overwrites an existing AppID folder for logging."""
-        print(f"[INFO] An existing folder for AppID {app_id} was updated.")
-
     def update_status(self, message: str, level: str = "info"):
         """Provides colored feedback to the user via the status label at the bottom."""
         colors = {"info": Theme.TEXT_SECONDARY, "success": Theme.STATUS_SUCCESS,
                   "error": Theme.STATUS_ERROR, "warning": Theme.STATUS_WARNING}
         self.status_label.configure(text=message, text_color=colors.get(level, colors["info"]))
         print(f"[{level.upper()}] {message}")
+        # Force GUI update to show status immediately
+        self.update_idletasks()
 
     def on_drop(self, event):
         """
         The main logic handler for when files are dropped onto the drop zone.
-        It validates input, organizes files, and updates the session state.
+        It validates input, organizes files, and immediately processes the game
+        for installation or update.
         """
         self.update_status("Processing dropped files...")
         file_paths_str = re.findall(r'\{.*?\}|\S+', event.data)
@@ -519,17 +462,37 @@ class App(TkinterDnD.Tk):
         script_directory = os.path.dirname(os.path.abspath(__file__))
         destination_directory = os.path.join(script_directory, "data", app_id)
 
+        # Check if this is an update or new installation
+        is_update = self.db.is_appid_exists(app_id)
+        
+        if is_update:
+            self.update_status(f"Updating existing AppID {app_id}...", "info")
+            
+            # First uninstall the existing game
+            try:
+                uninstall_result = self.game_installer.uninstall_game(app_id)
+                if uninstall_result['success']:
+                    print(f"[INFO] Successfully uninstalled existing AppID {app_id}")
+                    stats = uninstall_result['stats']
+                    self.update_status(f"Uninstalled AppID {app_id} ({stats['depots_removed']} depots removed)", "success")
+                else:
+                    self.update_status(f"Warning: Uninstallation had issues: {uninstall_result['errors']}", "warning")
+                    print(f"[WARNING] Uninstall errors for AppID {app_id}: {uninstall_result['errors']}")
+            except Exception as e:
+                self.update_status(f"Error during uninstallation: {e}", "error")
+                print(f"[ERROR] Failed to uninstall AppID {app_id}: {e}")
+                return
+        else:
+            self.update_status(f"Installing new AppID {app_id}...", "info")
+
         # If a folder already exists, remove it to ensure a clean slate.
         if os.path.isdir(destination_directory):
-            self.on_update_detected(app_id)
             try:
                 shutil.rmtree(destination_directory)
             except OSError as e:
                 self.update_status(f"Error removing old folder: {e}", "error")
                 return
 
-        # Add the processed AppID to the set for this session.
-        self.session_appids.add(app_id)
         os.makedirs(destination_directory, exist_ok=True)
 
         # Copy all valid files to the destination.
@@ -542,13 +505,44 @@ class App(TkinterDnD.Tk):
                     copied_files_count += 1
                 except Exception as e:
                     self.update_status(f"Error copying '{os.path.basename(path)}': {e}", "error")
-                    shutil.rmtree(destination_directory)  # Clean up on failure.
+                    shutil.rmtree(destination_directory, ignore_errors=True)  # Clean up on failure.
                     return
 
-        # Report success to the user.
-        action_verb = "Updated existing" if os.path.isdir(destination_directory) else "Added new"
-        success_msg = f"Success! {action_verb} AppID {app_id} with {copied_files_count} files."
-        self.update_status(success_msg, "success")
+        # Now install the game using the new installer
+        try:
+            install_result = self.game_installer.install_game(app_id, destination_directory)
+            
+            if install_result['success']:
+                action_verb = "Updated" if is_update else "Installed"
+                stats = install_result['stats']
+                success_msg = f"{action_verb} AppID {app_id} successfully! ({stats['depots_processed']} depots, {stats['manifests_copied']} manifests)"
+                self.update_status(success_msg, "success")
+                
+                # Update database stats display
+                self.update_database_stats()
+                
+                # Show any warnings
+                if install_result['warnings']:
+                    for warning in install_result['warnings']:
+                        print(f"[WARNING] {warning}")
+                
+            else:
+                # Installation failed, clean up
+                self.update_status(f"Installation failed for AppID {app_id}: {install_result['errors']}", "error")
+                for error in install_result['errors']:
+                    print(f"[ERROR] {error}")
+                
+                # Clean up the data folder
+                if os.path.exists(destination_directory):
+                    shutil.rmtree(destination_directory, ignore_errors=True)
+                
+        except Exception as e:
+            self.update_status(f"Unexpected error during installation: {e}", "error")
+            print(f"[ERROR] Installation error for AppID {app_id}: {e}")
+            
+            # Clean up the data folder
+            if os.path.exists(destination_directory):
+                shutil.rmtree(destination_directory, ignore_errors=True)
 
 
 # =============================================================================
