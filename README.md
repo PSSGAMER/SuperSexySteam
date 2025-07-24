@@ -27,14 +27,14 @@ The easiest way to install SuperSexySteam is using the automated installer:
 
 1. **Download the latest release** from the [Releases page](https://github.com/PSSGAMER/SuperSexySteam/releases)
 2. **Extract the installer package** to any folder
-3. **Run the installer** by double-clicking `click_here_as_admin.bat`
+3. **Run the installer** by double-clicking `click_here_to_install.bat`
 4. **Follow the installation prompts** - the installer will:
-   - Extract SuperSexySteam to `C:\Program Files (x86)\SuperSexySteam`
+   - Extract SuperSexySteam to `%APPDATA%\SuperSexySteam`
    - Create a Python virtual environment
    - Install all required dependencies
    - Create desktop shortcuts for easy access
 
-**Requirements:** Windows 10/11, Python 3.8+, Administrator privileges
+**Requirements:** Windows 10/11, Python 3.8+
 
 ---
 
@@ -135,7 +135,7 @@ To create a distribution package with the installer:
    ```
    SuperSexySteam_Release/
    ├── SuperSexySteam.zip          (created by package script)
-   ├── click_here_as_admin.bat     (main installer)
+   ├── click_here_to_install.bat   (main installer)
    ├── install.ps1                 (PowerShell installer)
    └── install_config.ps1          (customizable installer)
    ```

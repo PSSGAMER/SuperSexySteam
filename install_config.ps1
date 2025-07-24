@@ -1,10 +1,11 @@
 # SuperSexySteam Installer Configuration
 # Edit this file to customize installation settings
 
-# Installation directory (change this if you want to install elsewhere)
-$INSTALL_LOCATION = "C:\Program Files (x86)\SuperSexySteam"
+# Installation directory (default: User AppData Roaming)
+$INSTALL_LOCATION = "$env:APPDATA\SuperSexySteam"
 
 # Alternative installation locations (uncomment to use):
+# $INSTALL_LOCATION = "C:\Program Files (x86)\SuperSexySteam"
 # $INSTALL_LOCATION = "C:\SuperSexySteam"
 # $INSTALL_LOCATION = "D:\Games\SuperSexySteam" 
 # $INSTALL_LOCATION = "$env:USERPROFILE\SuperSexySteam"

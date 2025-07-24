@@ -1,8 +1,8 @@
 # SuperSexySteam Installer Script (PowerShell)
-# This script installs SuperSexySteam to Program Files and creates desktop shortcuts
+# This script installs SuperSexySteam to User AppData Roaming and creates desktop shortcuts
 
 param(
-    [string]$InstallDir = "C:\Program Files (x86)\SuperSexySteam"
+    [string]$InstallDir = "$env:APPDATA\SuperSexySteam"
 )
 
 # ==========================================
@@ -23,19 +23,6 @@ Write-Host "- Install required dependencies"
 Write-Host "- Create desktop shortcuts"
 Write-Host ""
 Read-Host "Press Enter to continue"
-
-# ==========================================
-# ADMINISTRATIVE PRIVILEGES CHECK
-# ==========================================
-Write-Host "Checking for administrative privileges..." -ForegroundColor Yellow
-if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
-    Write-Host ""
-    Write-Host "ERROR: This installer requires administrative privileges." -ForegroundColor Red
-    Write-Host "Please run this script as Administrator." -ForegroundColor Red
-    Write-Host ""
-    Read-Host "Press Enter to exit"
-    exit 1
-}
 
 # ==========================================
 # PYTHON CHECK
@@ -171,11 +158,6 @@ if (Test-Path "$InstallDir\icon.ico") {
 $Shortcut.Description = "SuperSexySteam - Steam Depot Management Tool"
 $Shortcut.Save()
 
-# Set shortcut to run as administrator
-$bytes = [System.IO.File]::ReadAllBytes("$DesktopDir\SuperSexySteam.lnk")
-$bytes[0x15] = $bytes[0x15] -bor 0x20  # Set the RunAsUser flag
-[System.IO.File]::WriteAllBytes("$DesktopDir\SuperSexySteam.lnk", $bytes)
-
 # Refresher shortcut
 $Shortcut = $WshShell.CreateShortcut("$DesktopDir\SuperSexySteam Refresher.lnk")
 $Shortcut.TargetPath = "$InstallDir\venv\Scripts\python.exe"
@@ -187,11 +169,6 @@ if (Test-Path "$InstallDir\refreshericon.ico") {
 }
 $Shortcut.Description = "SuperSexySteam Refresher - Database Refresh Tool"
 $Shortcut.Save()
-
-# Set shortcut to run as administrator
-$bytes = [System.IO.File]::ReadAllBytes("$DesktopDir\SuperSexySteam Refresher.lnk")
-$bytes[0x15] = $bytes[0x15] -bor 0x20  # Set the RunAsUser flag
-[System.IO.File]::WriteAllBytes("$DesktopDir\SuperSexySteam Refresher.lnk", $bytes)
 
 # DLL Injector shortcut
 $Shortcut = $WshShell.CreateShortcut("$DesktopDir\DLL Injector.lnk")
@@ -226,9 +203,9 @@ Write-Host "You can now use SuperSexySteam from the desktop shortcuts." -Foregro
 Write-Host ""
 Write-Host "TROUBLESHOOTING:" -ForegroundColor Yellow
 Write-Host "If shortcuts don't work or icons don't appear:" -ForegroundColor White
-Write-Host "1. Try running shortcuts as Administrator" -ForegroundColor White
-Write-Host "2. Check that Python is properly installed" -ForegroundColor White
-Write-Host "3. Verify all files exist in: $InstallDir" -ForegroundColor White
-Write-Host "4. For icons: Try refreshing desktop (F5) or restarting Explorer" -ForegroundColor White
+Write-Host "1. Check that Python is properly installed" -ForegroundColor White
+Write-Host "2. Verify all files exist in: $InstallDir" -ForegroundColor White
+Write-Host "3. For icons: Try refreshing desktop (F5) or restarting Explorer" -ForegroundColor White
+Write-Host "4. If still having issues, try running shortcuts as Administrator" -ForegroundColor White
 Write-Host ""
 Read-Host "Press Enter to exit"
