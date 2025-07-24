@@ -19,6 +19,7 @@ import configparser
 import os
 import re
 import shutil
+import sys
 import time
 
 
@@ -284,6 +285,15 @@ def main():
     app_config = configparser.ConfigParser()
     app_config.read('config.ini')
     steam_path = app_config.get('Paths', 'steam_path', fallback='')
+
+    # Handle console window visibility based on debug setting
+    debug_mode = app_config.getboolean('Debug', 'show_console', fallback=False)
+    if not debug_mode and sys.platform == "win32":
+        try:
+            import ctypes
+            ctypes.windll.user32.ShowWindow(ctypes.windll.kernel32.GetConsoleWindow(), 0)
+        except Exception:
+            pass  # Silently ignore if hiding console fails
 
     if not steam_path or not os.path.isdir(steam_path):
         print(f"[Error] Steam path '{steam_path}' is invalid or not configured in config.ini.")
