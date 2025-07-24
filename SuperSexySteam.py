@@ -16,7 +16,7 @@
 #    against a master list in 'config.ini' to determine which are "new" and
 #    which are "updated".
 # 6. This categorized list is written to 'data.ini', the master list in
-#    'config.ini' is updated, and a secondary script ('data.py') is launched
+#    'config.ini' is updated, and a secondary script ('acfgen.py') is launched
 #    to handle the next stage of processing. The GUI then closes.
 #
 # Dependencies:
@@ -34,161 +34,8 @@ from PIL import Image, ImageDraw
 import sys
 import subprocess
 
-
-# =============================================================================
-# --- DATA PARSING FUNCTIONS ---
-# =============================================================================
-
-def parse_lua_for_depots(lua_path):
-    """
-    Reads a given .lua file and extracts all DepotIDs from addappid calls.
-    It looks for any 'addappid(id, ...)' format, regardless of whether
-    they have decryption keys or not.
-
-    This function is designed to be resilient, ignoring comment lines and
-    extracting all depot IDs for GreenLuma AppList processing.
-
-    Args:
-        lua_path (str): The full path to the .lua file to be parsed.
-
-    Returns:
-        list: A list of dictionaries. Each dictionary represents a found depot
-              and has the key 'depot_id'. Returns an empty list if the file
-              is not found or an error occurs.
-    """
-    # This regex is crafted to match any addappid line with a depot ID.
-    # - `^\s*addappid\(`: Matches the start of the line and the function name.
-    # - `\s*`: Allows optional whitespace after the opening parenthesis.
-    # - `(\d+)`: Captures the numeric DepotID (Group 1).
-    # - `\s*`: Allows optional whitespace after the depot ID.
-    # - `[,\)]`: Matches either a comma (indicating more parameters) or closing parenthesis
-    depot_pattern = re.compile(r'^\s*addappid\(\s*(\d+)\s*[,\)]')
-
-    extracted_depots = []
-    try:
-        with open(lua_path, 'r', encoding='utf-8') as f:
-            for line in f:
-                # Ignore comment lines to avoid parsing them.
-                if line.strip().startswith('--'):
-                    continue
-
-                match = depot_pattern.match(line)
-                if match:
-                    depot_id = match.group(1)
-                    extracted_depots.append({
-                        'depot_id': depot_id
-                    })
-    except FileNotFoundError:
-        print(f"  [Warning] Could not find file during parsing: {lua_path}")
-    except Exception as e:
-        print(f"  [Error] Failed to read or parse {os.path.basename(lua_path)}: {e}")
-
-    return extracted_depots
-
-
-def update_greenluma_applist(gl_path, new_appids, new_depots):
-    """
-    Adds new AppIDs and their associated DepotIDs to the GreenLuma AppList folder.
-
-    It works by finding the highest numbered existing .txt file and creating
-    new files sequentially from that point. First, it writes all the new AppIDs,
-    then it writes all the depots associated with those new AppIDs.
-
-    Args:
-        gl_path (str): The path to the main GreenLuma folder.
-        new_appids (list): A list of AppID strings to add.
-        new_depots (list): A list of depot dictionaries from the new apps.
-    """
-    print(f"\nProcessing GreenLuma AppList: {gl_path}")
-    applist_dir = os.path.join(gl_path, 'NormalMode', 'AppList')
-    if not os.path.isdir(applist_dir):
-        print(f"[Warning] GreenLuma AppList directory not found: {applist_dir}")
-        try:
-            os.makedirs(applist_dir, exist_ok=True)
-            print(f"[Info] Created missing AppList directory: {applist_dir}")
-        except Exception as e:
-            print(f"[Error] Could not create AppList directory: {e}")
-            return
-
-    # Find the next available index for a new file.
-    indices = [int(os.path.splitext(f)[0]) for f in os.listdir(applist_dir) if os.path.splitext(f)[0].isdigit() and f.endswith('.txt')]
-    current_index = max(indices) + 1 if indices else 0
-    print(f"  Found {len(indices)} existing entries. Starting new entries from index {current_index}.")
-
-    # Write all new AppIDs to sequentially numbered files.
-    if new_appids:
-        print(f"  Writing {len(new_appids)} new AppIDs...")
-        for app_id in new_appids:
-            filepath = os.path.join(applist_dir, f"{current_index}.txt")
-            try:
-                with open(filepath, 'w', encoding='utf-8') as f: f.write(app_id)
-                print(f"    - Created {os.path.basename(filepath)} with AppID: {app_id}")
-                current_index += 1
-            except Exception as e: print(f"[Error] Could not write file {filepath}: {e}")
-
-    # Write all depots from those new apps to sequentially numbered files.
-    new_depot_ids = [d['depot_id'] for d in new_depots]
-    if new_depot_ids:
-        print(f"  Writing {len(new_depot_ids)} new DepotIDs...")
-        for depot_id in new_depot_ids:
-            filepath = os.path.join(applist_dir, f"{current_index}.txt")
-            try:
-                with open(filepath, 'w', encoding='utf-8') as f: f.write(depot_id)
-                print(f"    - Created {os.path.basename(filepath)} with DepotID: {depot_id}")
-                current_index += 1
-            except Exception as e: print(f"[Error] Could not write file {filepath}: {e}")
-
-    print("  Finished updating GreenLuma AppList.")
-
-
-def configure_greenluma_injector(steam_path, greenluma_path):
-    """
-    Configures the DLLInjector.ini file in the GreenLuma NormalMode directory
-    with the correct Steam executable path and GreenLuma DLL path.
-    
-    Args:
-        steam_path (str): The path to the Steam installation directory.
-        greenluma_path (str): The path to the GreenLuma directory.
-    """
-    print(f"\nConfiguring GreenLuma DLLInjector.ini...")
-    
-    # Construct the full path to the DLLInjector.ini file
-    injector_ini_path = os.path.join(greenluma_path, 'NormalMode', 'DLLInjector.ini')
-    
-    if not os.path.exists(injector_ini_path):
-        print(f"[Error] DLLInjector.ini not found at: {injector_ini_path}")
-        return
-    
-    # Construct the paths using Windows-style backslashes
-    # Point to the specific executable and DLL files
-    # Escape backslashes for regex use
-    steam_exe_path = (steam_path.replace('/', '\\') + '\\Steam.exe').replace('\\', '\\\\')
-    greenluma_dll_path = (greenluma_path.replace('/', '\\') + '\\NormalMode\\GreenLuma_2025_x86.dll').replace('\\', '\\\\')
-    
-    # Read the current file content as text to preserve formatting and comments
-    with open(injector_ini_path, 'r', encoding='utf-8') as f:
-        content = f.read()
-    
-    # Replace the specific lines we need to modify using string replacement
-    # Update UseFullPathsFromIni
-    content = re.sub(r'^UseFullPathsFromIni\s*=\s*.*$', f'UseFullPathsFromIni = 1', content, flags=re.MULTILINE | re.IGNORECASE)
-    
-    # Update Exe path - point to Steam executable
-    content = re.sub(r'^Exe\s*=\s*.*$', f'Exe = {steam_exe_path}', content, flags=re.MULTILINE | re.IGNORECASE)
-    
-    # Update Dll path - point to GreenLuma DLL file  
-    content = re.sub(r'^Dll\s*=\s*.*$', f'Dll = {greenluma_dll_path}', content, flags=re.MULTILINE | re.IGNORECASE)
-    
-    # Write the updated content back to the file
-    try:
-        with open(injector_ini_path, 'w', encoding='utf-8') as f:
-            f.write(content)
-        print(f"  Successfully configured DLLInjector.ini")
-        print(f"  Steam executable: {steam_exe_path}")
-        print(f"  GreenLuma DLL: {greenluma_dll_path}")
-        print(f"  UseFullPathsFromIni: 1")
-    except Exception as e:
-        print(f"[Error] Failed to write DLLInjector.ini: {e}")
+# Import our custom GreenLuma module
+from greenluma_manager import process_appids_for_greenluma, configure_greenluma_injector
 
 
 # =============================================================================
@@ -521,33 +368,80 @@ class App(TkinterDnD.Tk):
         with open('data.ini', 'w') as f:
             data_config.write(f)
 
-        self.update_status(f"Applied {len(new_appids_for_data_ini)} new, {len(updated_appids_for_data_ini)} updated IDs. Processing GreenLuma...", "success")
+        self.update_status(f"Applied {len(new_appids_for_data_ini)} new, {len(updated_appids_for_data_ini)} updated IDs. Starting workflow...", "success")
 
-        # Process GreenLuma AppList directly
+        # Import the required modules for the new workflow
+        from lua_parser import parse_lua_for_depots
+        from vdf_updater import update_config_vdf_for_appids
+        from depot_cache_manager import manage_depot_cache_for_appids
+
+        # Process all session AppIDs through the complete workflow
+        all_appids_to_process = list(self.session_appids)
+        total_steps = 4
+        
+        # Step 1: Process GreenLuma AppList
+        self.update_status(f"Step 1/{total_steps}: Processing GreenLuma AppList...", "info")
         try:
             greenluma_path = self.app_config.get('Paths', 'greenluma_path', fallback='')
             if greenluma_path and os.path.isdir(greenluma_path):
-                # Parse depot data from new AppIDs only
-                new_appids_list = list(new_appids_for_data_ini)
-                all_new_depots = []
-                for app_id in new_appids_list:
-                    lua_path = os.path.join('data', app_id, f"{app_id}.lua")
-                    depots = parse_lua_for_depots(lua_path)
-                    all_new_depots.extend(depots)
+                result = process_appids_for_greenluma(greenluma_path, all_appids_to_process, 'data', verbose=True)
                 
-                # Update GreenLuma AppList
-                update_greenluma_applist(greenluma_path, new_appids_list, all_new_depots)
+                if result['success']:
+                    stats = result['stats']
+                    print(f"[Success] GreenLuma processing completed: {stats['appids_added']} AppIDs, {stats['depots_added']} depots")
+                    self.update_status(f"Step 1/{total_steps}: GreenLuma updated ({stats['appids_added']} AppIDs, {stats['depots_added']} depots)", "success")
+                else:
+                    for error in result['errors']:
+                        print(f"[Error] GreenLuma processing: {error}")
+                    self.update_status(f"Step 1/{total_steps}: GreenLuma processing had errors", "warning")
             else:
                 print(f"[Warning] GreenLuma path '{greenluma_path}' is invalid. Skipping AppList update.")
+                self.update_status(f"Step 1/{total_steps}: GreenLuma path invalid, skipped", "warning")
         except Exception as e:
-            self.update_status(f"Error processing GreenLuma: {e}", "error")
+            self.update_status(f"Step 1/{total_steps}: GreenLuma error: {e}", "error")
             print(f"[Error] Failed to process GreenLuma: {e}")
 
-        # Launch acfgen.py in a new process and exit.
+        # Step 2: Process depot cache for manifest files
+        self.update_status(f"Step 2/{total_steps}: Processing depot cache...", "info")
         try:
-            self.update_status("Launching ACF generator...", "success")
-            # sys.executable ensures the new process uses the same Python interpreter.
+            steam_path = self.app_config.get('Paths', 'steam_path', fallback='')
+            if steam_path and os.path.isdir(steam_path):
+                cache_stats = manage_depot_cache_for_appids(steam_path, all_appids_to_process)
+                print(f"[Success] Depot cache processing: {cache_stats['copied_count']} files copied, {cache_stats['skipped_count']} files skipped")
+                self.update_status(f"Step 2/{total_steps}: Depot cache updated ({cache_stats['copied_count']} copied)", "success")
+            else:
+                print(f"[Warning] Steam path '{steam_path}' is invalid. Skipping depot cache update.")
+                self.update_status(f"Step 2/{total_steps}: Steam path invalid, skipped", "warning")
+        except Exception as e:
+            self.update_status(f"Step 2/{total_steps}: Depot cache error: {e}", "error")
+            print(f"[Error] Failed to process depot cache: {e}")
+
+        # Step 3: Update config.vdf for lua files
+        self.update_status(f"Step 3/{total_steps}: Updating Steam config.vdf...", "info")
+        try:
+            steam_path = self.app_config.get('Paths', 'steam_path', fallback='')
+            if steam_path and os.path.isdir(steam_path):
+                config_vdf_path = os.path.join(steam_path, 'config', 'config.vdf')
+                vdf_success = update_config_vdf_for_appids(config_vdf_path, all_appids_to_process)
+                if vdf_success:
+                    print("[Success] Steam config.vdf updated successfully")
+                    self.update_status(f"Step 3/{total_steps}: Steam config.vdf updated successfully", "success")
+                else:
+                    print("[Warning] Steam config.vdf update failed")
+                    self.update_status(f"Step 3/{total_steps}: Steam config.vdf update failed", "warning")
+            else:
+                print(f"[Warning] Steam path '{steam_path}' is invalid. Skipping config.vdf update.")
+                self.update_status(f"Step 3/{total_steps}: Steam path invalid, skipped", "warning")
+        except Exception as e:
+            self.update_status(f"Step 3/{total_steps}: Config.vdf error: {e}", "error")
+            print(f"[Error] Failed to update config.vdf: {e}")
+
+        # Step 4: Generate ACF files for AppIDs
+        self.update_status(f"Step 4/{total_steps}: Generating ACF files...", "info")
+        try:
+            # Launch acfgen.py in a new process and exit.
             subprocess.Popen([sys.executable, "acfgen.py"])
+            self.update_status("All processing complete! ACF generator launched.", "success")
             self.destroy()
         except FileNotFoundError:
             self.update_status("Error: 'acfgen.py' not found in script directory!", "error")

@@ -40,28 +40,32 @@ The easiest way to install SuperSexySteam is using the automated installer:
 
 ## 🔧 Common Workflow
 
-Here's the typical workflow for using SuperSexySteam:
+Here's the new streamlined workflow for using SuperSexySteam:
 
 1. **Setup** (one-time)
    - Install SuperSexySteam using the installer
    - Or set up development environment from source
 
-2. **Add Content**
+2. **Process Content** (simplified drag-and-drop workflow)
    - Launch SuperSexySteam
-   - Drag `.lua` and `.manifest` files into the interface
-   - Click "Apply" to process
+   - Drag `.lua` files (and any associated `.manifest` files) into the interface
+   - Click "Apply" to automatically trigger the complete processing pipeline:
+     - ✅ **GreenLuma AppList Management** - Adds AppIDs and DepotIDs to GreenLuma
+     - ✅ **Depot Cache Processing** - Copies manifest files to Steam's depot cache
+     - ✅ **Steam Config Update** - Updates config.vdf with depot decryption keys
+     - ✅ **ACF Generation** - Creates Steam app manifests for game recognition
 
-3. **Refresh Database**
-   - Run "SuperSexySteam Refresher" before each Steam session
-   - This ensures your configuration is up-to-date
-
-4. **Start Steam**
+3. **Start Steam**
    - Launch "DLL Injector" to start Steam with GreenLuma
-   - Your configured depots will be available
+   - Your configured depots will be available and games recognized
+
+4. **Optional: Manual Refresh**
+   - The refresh.py script is available but currently contains no logic
+   - All necessary processing is handled automatically in step 2
 
 5. **Troubleshooting**
-   - Re-run the refresher if you encounter download issues
-   - Check that all files are properly configured
+   - Check the console output for detailed processing information
+   - Verify that Steam and GreenLuma paths are correctly configured
 
 ---
 
@@ -171,23 +175,23 @@ These settings are saved to `config.ini` and won't be asked again.
    - Include any associated `.manifest` files
    - Files are organized into `data/<AppID>/` directories
 
-3. **Apply Changes**
+3. **Apply Changes** (Complete Processing Pipeline)
    - Click the "Apply" button when ready
-   - The system will categorize new vs. updated AppIDs
-   - Data processing script runs automatically
+   - The system automatically processes everything in sequence:
+     - **Step 1:** Updates GreenLuma AppList with new AppIDs and DepotIDs
+     - **Step 2:** Copies manifest files to Steam's depot cache
+     - **Step 3:** Updates Steam's config.vdf with depot decryption keys
+     - **Step 4:** Launches ACF generator for Steam app recognition
+   - No additional manual steps required!
 
-### Database Refresh
+### Database Refresh (Optional)
 
-**Important:** Always run the refresh script before starting Steam:
+The refresh script is available but currently contains no logic:
 
-1. **Run SuperSexySteam Refresher**
-   - From desktop shortcut: "SuperSexySteam Refresher"
-   - Or run: `python refresh.py`
-
-2. **What it does:**
-   - Updates Steam's depot configuration
-   - Refreshes the depot cache
-   - Synchronizes all .manifest files
+1. **refresh.py** 
+   - Available for future manual refresh operations
+   - Currently a placeholder with no active functionality
+   - All necessary processing happens automatically when you click "Apply"
 
 ### Starting Steam with GreenLuma
 
