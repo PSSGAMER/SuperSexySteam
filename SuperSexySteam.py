@@ -444,6 +444,12 @@ class App(TkinterDnD.Tk):
                                            corner_radius=8, command=self.on_apply_click)
         self.apply_button.pack(pady=(0, 20), padx=20, fill="x", ipady=10)
 
+        # --- Clear Data Button (small, positioned in top-right) ---
+        self.clear_button = ctk.CTkButton(self, text="Clear Data", font=("Segoe UI", 10), text_color=Theme.TEXT_PRIMARY,
+                                          fg_color=Theme.STATUS_ERROR, hover_color="#c62828", border_width=0,
+                                          corner_radius=5, command=self.on_clear_data_click, width=80, height=25)
+        self.clear_button.place(relx=0.98, rely=0.02, anchor="ne")
+
         # --- Status Label ---
         self.status_label = ctk.CTkLabel(self, text="Ready for action.", font=Theme.FONT_PRIMARY,
                                           text_color=Theme.TEXT_SECONDARY, bg_color="transparent")
@@ -547,6 +553,38 @@ class App(TkinterDnD.Tk):
             self.update_status("Error: 'acfgen.py' not found in script directory!", "error")
         except Exception as e:
             self.update_status(f"Failed to launch acfgen.py: {e}", "error")
+
+    def on_clear_data_click(self):
+        """
+        Handles the "Clear Data" button click.
+        
+        Deletes the config.ini and data.ini files to reset the application
+        to its initial state, then terminates the script.
+        """
+        self.update_status("Clearing data and resetting application...", "warning")
+        
+        files_to_delete = ['config.ini', 'data.ini']
+        deleted_files = []
+        
+        for file_path in files_to_delete:
+            if os.path.exists(file_path):
+                try:
+                    os.remove(file_path)
+                    deleted_files.append(file_path)
+                    print(f"[INFO] Deleted {file_path}")
+                except Exception as e:
+                    print(f"[Error] Failed to delete {file_path}: {e}")
+                    self.update_status(f"Error deleting {file_path}: {e}", "error")
+                    return
+        
+        if deleted_files:
+            print(f"[INFO] Successfully deleted: {', '.join(deleted_files)}")
+        else:
+            print("[INFO] No config files found to delete.")
+        
+        print("[INFO] Application data cleared. Terminating...")
+        self.destroy()
+        sys.exit(0)
 
     def on_update_detected(self, app_id: str):
         """A hook called when a drop overwrites an existing AppID folder for logging."""
