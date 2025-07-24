@@ -1,15 +1,8 @@
 # acfgen.py
 #
 # This script is responsible for generating Steam's 'appmanifest_*.acf' files.
+# Updated for the new database-driven SuperSexySteam system.
 # These files are critical for the Steam client to recognize games as "installed."
-# The script performs two primary functions:
-#   1. Deletes existing .acf files for any AppIDs marked as "updated" to ensure
-#      a clean slate.
-#   2. Generates new .acf files for all "new" and "updated" AppIDs by fetching
-#      the latest configuration data directly from Steam's servers.
-#
-# It requires the 'steam' library to interact with the Steam network.
-# You can install it by running: pip install -U "steam[client]"
 
 import configparser
 import os
@@ -248,47 +241,20 @@ class ManifestGenerator:
 
             print("-" * 50)
             print("Successfully generated manifest file!")
-            print(f"Location: {file_path.resolve()}")
+            print(f"File: {file_path}")
+            print(f"AppID: {parsed_info['AppId']}")
+            print(f"Name: {parsed_info['Name']}")
+            print(f"Install Directory: {parsed_info['InstallDir']}")
+            print(f"Size: {total_size} bytes")
+            print(f"BuildID: {parsed_info['BuildId']}")
+            print(f"Depots: {len(parsed_info['Depots'])}")
+            print(f"Shared Depots: {len(parsed_info['DepotsShared'])}")
             print("-" * 50)
 
         except Exception as e:
-            print(f"An unexpected error occurred during manifest generation for AppID {app_id}: {e}")
+            print(f"Error generating manifest for AppID {app_id}: {e}")
             traceback.print_exc()
 
-def delete_existing_manifests(steamapps_path, appids_to_delete):
-    """
-    Scans the steamapps directory and deletes .acf files for specified AppIDs.
-
-    This is done for "updated" apps to ensure that Steam uses the newly
-    generated manifest instead of an old, potentially conflicting one.
-
-    Args:
-        steamapps_path (Path): The path to the 'steamapps' directory.
-        appids_to_delete (list): A list of AppID strings whose manifests should be deleted.
-    """
-    if not appids_to_delete:
-        print("No 'updated' AppIDs found in data.ini. No files to delete.")
-        return
-        
-    print(f"\n--- Deleting old manifests for {len(appids_to_delete)} updated AppIDs ---")
-    manifest_pattern = re.compile(r'^appmanifest_(\d+)\.acf$')
-    deleted_count = 0
-    try:
-        for filename in os.listdir(steamapps_path):
-            match = manifest_pattern.match(filename)
-            if match:
-                appid_from_file = match.group(1)
-                if appid_from_file in appids_to_delete:
-                    file_to_delete = os.path.join(steamapps_path, filename)
-                    try:
-                        os.remove(file_to_delete)
-                        print(f"  - Deleted '{filename}' (AppID: {appid_from_file})")
-                        deleted_count += 1
-                    except OSError as e:
-                        print(f"  [Error] Could not delete file '{filename}': {e}")
-    except Exception as e:
-        print(f"[Error] An unexpected error occurred while scanning for manifests to delete: {e}")
-    print(f"Deleted {deleted_count} old manifest file(s).")
 
 def generate_acf_for_appid(steam_path: str, app_id: str) -> bool:
     """
@@ -369,80 +335,12 @@ def remove_acf_for_appid(steam_path: str, app_id: str) -> bool:
         return False
 
 
-def main():
-    """
-    The main orchestrator function for the script.
-
-    It reads configuration, determines which apps to process, and then calls
-    the necessary functions to delete old manifests and generate new ones.
-    """
-    print("--- acfgen.py: Starting cleanup and generation of appmanifest files ---")
-
-    # --- Step 1: Read Configuration from .ini files ---
-    config = configparser.ConfigParser()
-    data_config = configparser.ConfigParser()
-
-    try:
-        config.read('config.ini')
-        steam_path = config.get('Paths', 'steam_path', fallback=None)
-
-        data_config.read('data.ini')
-        new_appids_str = data_config.get('AppIDs', 'new', fallback='')
-        updated_appids_str = data_config.get('AppIDs', 'updated', fallback='')
-        
-        # Create clean lists of AppIDs, filtering out any empty strings.
-        new_appids = [app_id for app_id in new_appids_str.split(',') if app_id]
-        updated_appids = [app_id for app_id in updated_appids_str.split(',') if app_id]
-
-    except configparser.Error as e:
-        print(f"[Error] Failed to read or parse configuration files: {e}")
-        return
-    except Exception as e:
-        print(f"[Error] An unexpected error occurred during configuration loading: {e}")
-        return
-
-    # Validate the Steam path.
-    if not steam_path or not os.path.isdir(steam_path):
-        print(f"[Warning] Steam path '{steam_path}' is invalid or not configured in config.ini. Aborting.")
-        return
-
-    steamapps_path = Path(steam_path) / 'steamapps'
-    if not steamapps_path.is_dir():
-        print(f"[Error] The 'steamapps' directory could not be found at: {steamapps_path}")
-        return
-
-    # --- Step 2: Delete old ACF files for 'updated' apps ---
-    # This is done first to prevent any conflicts with the new files we're about to generate.
-    delete_existing_manifests(steamapps_path, updated_appids)
-
-    # --- Step 3: Generate new ACF files for all 'new' and 'updated' apps ---
-    appids_to_generate = new_appids + updated_appids
-    if not appids_to_generate:
-        print("\nNo new or updated AppIDs to process. Exiting.")
-        return
-
-    print(f"\n--- Preparing to generate manifests for {len(appids_to_generate)} AppIDs ---")
-    
-    # Instantiate the generator once to be used for all AppIDs.
-    generator = ManifestGenerator()
-    for app_id_str in appids_to_generate:
-        try:
-            app_id = int(app_id_str)
-            generator.run_manifest_generator(app_id, steamapps_path)
-        except ValueError:
-            print(f"[Warning] Invalid AppID '{app_id_str}' found in data.ini. Skipping.")
-        except Exception as e:
-            print(f"[Error] A critical error occurred while processing AppID {app_id_str}: {e}")
-
-    print(f"\n--- acfgen.py: Finished ---")
-    
-    time.sleep(3)
-
 if __name__ == "__main__":
     """
-    Standard script entry point. Ensures that the `main()` function is only
-    called when the script is executed directly, not when imported as a module.
+    Standard script entry point. Individual ACF generation functions are now
+    available via generate_acf_for_appid() and remove_acf_for_appid().
+    The new system generates ACFs automatically during real-time processing.
     """
-    main()
-
-# Docs are generated by AI and may be inaccurate
+    print("acfgen.py - Individual ACF generation functions available")
+    print("Use generate_acf_for_appid() and remove_acf_for_appid() functions")
+    print("Legacy bulk generation has been removed in favor of real-time processing")

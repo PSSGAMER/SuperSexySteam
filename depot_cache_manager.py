@@ -138,34 +138,6 @@ def remove_manifests_for_appid(steam_path: str, app_id: str) -> Dict[str, int]:
     return stats
 
 
-def manage_depot_cache_for_appids(steam_path: str, app_ids: List[str]) -> Dict[str, int]:
-    """
-    Legacy function for batch processing multiple AppIDs.
-    Kept for backward compatibility.
-    
-    Args:
-        steam_path (str): Path to Steam installation directory
-        app_ids (List[str]): List of Steam AppIDs to process
-        
-    Returns:
-        Dict[str, int]: Combined statistics for all AppIDs
-    """
-    combined_stats = {'copied_count': 0, 'skipped_count': 0}
-    
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    
-    for app_id in app_ids:
-        data_folder = os.path.join(script_dir, "data", app_id)
-        if os.path.exists(data_folder):
-            stats = copy_manifests_for_appid(steam_path, app_id, data_folder)
-            combined_stats['copied_count'] += stats['copied_count']
-            combined_stats['skipped_count'] += stats['skipped_count']
-        else:
-            print(f"[WARNING] Data folder not found for AppID {app_id}: {data_folder}")
-    
-    return combined_stats
-
-
 def get_depot_cache_info(steam_path: str) -> Dict[str, any]:
     """
     Get information about the depot cache directory.

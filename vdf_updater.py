@@ -195,69 +195,6 @@ def get_existing_depot_keys(config_path, verbose=True):
     return existing_keys
 
 
-def update_config_vdf_for_appids(config_path, appids, data_dir='data', create_backup=True, verbose=True):
-    """
-    Updates Steam's config.vdf file with depot keys from specific AppIDs only.
-    
-    This function parses lua files for the given AppIDs, extracts depot keys,
-    and updates the config.vdf file with only those keys.
-
-    Args:
-        config_path (str): The full path to Steam's config.vdf file.
-        appids (list): List of AppID strings to process.
-        data_dir (str): Directory containing the AppID folders with lua files.
-        create_backup (bool): Whether to create a backup of the original file.
-        verbose (bool): Whether to print progress information.
-
-    Returns:
-        bool: True if the update was successful, False otherwise.
-    """
-    if verbose:
-        print(f"Processing Steam config for AppIDs: {', '.join(appids)}")
-    
-    if not os.path.exists(config_path):
-        if verbose:
-            print("[Error] config.vdf not found at the specified path.")
-        return False
-
-    if not appids:
-        if verbose:
-            print("[Warning] No AppIDs provided. Skipping config.vdf update.")
-        return False
-
-    # Import lua_parser to extract depot keys from lua files
-    from lua_parser import parse_lua_for_depots
-    
-    # Collect depot keys from the specified AppIDs
-    depot_keys = {}
-    processed_count = 0
-    
-    for app_id in appids:
-        lua_path = os.path.join(data_dir, app_id, f"{app_id}.lua")
-        if os.path.exists(lua_path):
-            depots = parse_lua_for_depots(lua_path)
-            for depot in depots:
-                if 'depot_key' in depot and depot['depot_key']:
-                    depot_keys[depot['depot_id']] = depot['depot_key']
-            processed_count += 1
-            if verbose:
-                print(f"  Processed AppID {app_id}: found {len(depots)} depots")
-        else:
-            if verbose:
-                print(f"  [Warning] Lua file not found for AppID {app_id}: {lua_path}")
-    
-    if not depot_keys:
-        if verbose:
-            print("[Warning] No depot keys found in the specified AppIDs.")
-        return False
-    
-    if verbose:
-        print(f"  Collected {len(depot_keys)} depot keys from {processed_count} AppIDs")
-    
-    # Use the existing update_config_vdf function
-    return update_config_vdf(config_path, depot_keys, create_backup, verbose)
-
-
 def add_depots_to_config_vdf(config_path, depots, create_backup=True, verbose=True):
     """
     Add depot decryption keys to Steam's config.vdf file.

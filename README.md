@@ -46,10 +46,10 @@ Here's the new streamlined workflow for using SuperSexySteam:
    - Install SuperSexySteam using the installer
    - Or set up development environment from source
 
-2. **Process Content** (simplified drag-and-drop workflow)
+2. **Process Content** (real-time drag-and-drop workflow)
    - Launch SuperSexySteam
    - Drag `.lua` files (and any associated `.manifest` files) into the interface
-   - Click "Apply" to automatically trigger the complete processing pipeline:
+   - Games are **automatically processed instantly** - no Apply button needed!
      - ✅ **GreenLuma AppList Management** - Adds AppIDs and DepotIDs to GreenLuma
      - ✅ **Depot Cache Processing** - Copies manifest files to Steam's depot cache
      - ✅ **Steam Config Update** - Updates config.vdf with depot decryption keys
@@ -175,14 +175,14 @@ These settings are saved to `config.ini` and won't be asked again.
    - Include any associated `.manifest` files
    - Files are organized into `data/<AppID>/` directories
 
-3. **Apply Changes** (Complete Processing Pipeline)
-   - Click the "Apply" button when ready
-   - The system automatically processes everything in sequence:
+3. **Real-time Processing** (Instant Game Installation)
+   - Games are **processed immediately** when dropped onto the interface
+   - The system automatically processes everything in real-time:
      - **Step 1:** Updates GreenLuma AppList with new AppIDs and DepotIDs
      - **Step 2:** Copies manifest files to Steam's depot cache
      - **Step 3:** Updates Steam's config.vdf with depot decryption keys
-     - **Step 4:** Launches ACF generator for Steam app recognition
-   - No additional manual steps required!
+     - **Step 4:** Generates ACF files for Steam app recognition
+   - No Apply button needed - everything happens instantly!
 
 ### Database Refresh (Optional)
 
@@ -191,7 +191,7 @@ The refresh script is available but currently contains no logic:
 1. **refresh.py** 
    - Available for future manual refresh operations
    - Currently a placeholder with no active functionality
-   - All necessary processing happens automatically when you click "Apply"
+   - All processing happens automatically when you drop files
 
 ### Starting Steam with GreenLuma
 
