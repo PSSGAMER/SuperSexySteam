@@ -41,27 +41,28 @@ import subprocess
 
 def parse_lua_for_depots(lua_path):
     """
-    Reads a given .lua file and extracts all DepotIDs that have a corresponding
-    DepotKey. It specifically looks for the 'addappid(id, 1, "key")' format.
+    Reads a given .lua file and extracts all DepotIDs from addappid calls.
+    It looks for any 'addappid(id, ...)' format, regardless of whether
+    they have decryption keys or not.
 
-    This function is designed to be resilient, ignoring comment lines and lines
-    that define AppIDs or DLCs without an associated decryption key.
+    This function is designed to be resilient, ignoring comment lines and
+    extracting all depot IDs for GreenLuma AppList processing.
 
     Args:
         lua_path (str): The full path to the .lua file to be parsed.
 
     Returns:
         list: A list of dictionaries. Each dictionary represents a found depot
-              and has the keys 'depot_id' and 'depot_key'. Returns an empty
-              list if the file is not found or an error occurs.
+              and has the key 'depot_id'. Returns an empty list if the file
+              is not found or an error occurs.
     """
-    # This regex is crafted to match lines containing a depot with a key.
+    # This regex is crafted to match any addappid line with a depot ID.
     # - `^\s*addappid\(`: Matches the start of the line and the function name.
+    # - `\s*`: Allows optional whitespace after the opening parenthesis.
     # - `(\d+)`: Captures the numeric DepotID (Group 1).
-    # - `,\s*1,\s*`: Ensures it's a line with the '1' parameter, which typically
-    #                indicates a depot with a key, not just a DLC definition.
-    # - `"([a-fA-F0-9]+)"`: Captures the hexadecimal DepotKey (Group 2).
-    depot_pattern = re.compile(r'^\s*addappid\((\d+),\s*1,\s*"([a-fA-F0-9]+)"\)')
+    # - `\s*`: Allows optional whitespace after the depot ID.
+    # - `[,\)]`: Matches either a comma (indicating more parameters) or closing parenthesis
+    depot_pattern = re.compile(r'^\s*addappid\(\s*(\d+)\s*[,\)]')
 
     extracted_depots = []
     try:
@@ -74,10 +75,8 @@ def parse_lua_for_depots(lua_path):
                 match = depot_pattern.match(line)
                 if match:
                     depot_id = match.group(1)
-                    depot_key = match.group(2)
                     extracted_depots.append({
-                        'depot_id': depot_id,
-                        'depot_key': depot_key
+                        'depot_id': depot_id
                     })
     except FileNotFoundError:
         print(f"  [Warning] Could not find file during parsing: {lua_path}")
