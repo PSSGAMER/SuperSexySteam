@@ -1,0 +1,6 @@
+customtkinter 
+tkinterdnd2 
+Pillow 
+steam 
+protobuf==3.20.3 
+gevent-eventemitter
