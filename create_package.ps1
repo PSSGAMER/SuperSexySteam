@@ -29,10 +29,9 @@ $FilesToInclude = @(
 # Files to exclude (installer files)
 $FilesToExclude = @(
     "install.ps1", 
-    "install_launcher.bat",
+    "click_here_as_admin.bat",
     "install_config.ps1",
     "create_package.ps1",
-    "INSTALLER_README.md",
     "__pycache__",
     "*.zip"
 )
@@ -137,9 +136,9 @@ Write-Host "  + Added: SuperSexySteam.zip" -ForegroundColor Green
 # Copy installer files
 $InstallerFiles = @(
     "install.ps1", 
-    "install_launcher.bat",
+    "click_here_as_admin.bat",
     "install_config.ps1",
-    "INSTALLER_README.md"
+    "README.md"
 )
 
 foreach ($file in $InstallerFiles) {
@@ -179,5 +178,5 @@ if (Test-Path $ReleasePath) {
 
 Write-Host "To distribute SuperSexySteam:" -ForegroundColor Yellow
 Write-Host "1. Share the release.zip file - it contains everything needed" -ForegroundColor White
-Write-Host "2. Users extract release.zip and run install_launcher.bat" -ForegroundColor White
+Write-Host "2. Users extract release.zip and run click_here_as_admin.bat" -ForegroundColor White
 Write-Host ""
