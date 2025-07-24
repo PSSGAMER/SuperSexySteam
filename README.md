@@ -9,11 +9,11 @@ A powerful tool for Steam depot management that works in conjunction with GreenL
 ## 📋 Table of Contents
 
 - [🎯 Quick Start (Recommended)](#-quick-start-recommended)
+- [🔧 Common Workflow](#-common-workflow)
 - [🔧 Run from Source](#-run-from-source) 
 - [📦 Build Distribution Package](#-build-distribution-package)
 - [🎮 How to Use SuperSexySteam](#-how-to-use-supersexystemsteam)
 - [⚙️ Prerequisites](#️-prerequisites)
-- [🔧 Common Workflow](#-common-workflow)
 - [🚀 Planned Features](#-planned-features)
 - [🤝 Contributing](#-contributing)
 
@@ -37,6 +37,33 @@ The easiest way to install SuperSexySteam is using the automated installer:
 **Requirements:** Windows 10/11, Python 3.8+, Administrator privileges
 
 📖 **Need help?** See the included `INSTALLER_README.md` for detailed installation instructions and troubleshooting.
+
+---
+
+## 🔧 Common Workflow
+
+Here's the typical workflow for using SuperSexySteam:
+
+1. **Setup** (one-time)
+   - Install SuperSexySteam using the installer
+   - Or set up development environment from source
+
+2. **Add Content**
+   - Launch SuperSexySteam
+   - Drag `.lua` and `.manifest` files into the interface
+   - Click "Apply" to process
+
+3. **Refresh Database**
+   - Run "SuperSexySteam Refresher" before each Steam session
+   - This ensures your configuration is up-to-date
+
+4. **Start Steam**
+   - Launch "DLL Injector" to start Steam with GreenLuma
+   - Your configured depots will be available
+
+5. **Troubleshooting**
+   - Re-run the refresher if you encounter download issues
+   - Check that all files are properly configured
 
 ---
 
@@ -197,33 +224,6 @@ These settings are saved to `config.ini` and won't be asked again.
 ### Optional Tools
 - **Git** - For cloning the repository (development only)
 - **PowerShell** - For running installation scripts (Windows 7+ has this built-in)
-
----
-
-## 🔧 Common Workflow
-
-Here's the typical workflow for using SuperSexySteam:
-
-1. **Setup** (one-time)
-   - Install SuperSexySteam using the installer
-   - Or set up development environment from source
-
-2. **Add Content**
-   - Launch SuperSexySteam
-   - Drag `.lua` and `.manifest` files into the interface
-   - Click "Apply" to process
-
-3. **Refresh Database**
-   - Run "SuperSexySteam Refresher" before each Steam session
-   - This ensures your configuration is up-to-date
-
-4. **Start Steam**
-   - Launch "DLL Injector" to start Steam with GreenLuma
-   - Your configured depots will be available
-
-5. **Troubleshooting**
-   - Re-run the refresher if you encounter download issues
-   - Check that all files are properly configured
 
 ---
 
