@@ -30,6 +30,8 @@ import configparser
 from PIL import Image, ImageDraw
 import sys
 import subprocess
+import psutil
+import time
 
 # Import our custom modules
 from greenluma_manager import configure_greenluma_injector
@@ -116,6 +118,136 @@ def create_gradient_image(width, height, color1, color2, vertical=True):
             draw.line([(i, 0), (i, height)], fill=(r, g, b))
 
     return ctk.CTkImage(light_image=gradient, size=(width, height))
+
+
+# =============================================================================
+# --- STEAM MANAGEMENT FUNCTIONS ---
+# =============================================================================
+
+def is_steam_running():
+    """
+    Check if Steam.exe is currently running.
+    
+    Returns:
+        bool: True if Steam is running, False otherwise.
+    """
+    try:
+        for process in psutil.process_iter(['pid', 'name']):
+            if process.info['name'].lower() == 'steam.exe':
+                return True
+        return False
+    except Exception as e:
+        print(f"[ERROR] Failed to check Steam status: {e}")
+        return False
+
+
+def terminate_steam():
+    """
+    Terminate all Steam.exe processes.
+    
+    Returns:
+        dict: Result dictionary with success status and details.
+    """
+    result = {
+        'success': False,
+        'terminated_processes': 0,
+        'errors': []
+    }
+    
+    try:
+        steam_processes = []
+        for process in psutil.process_iter(['pid', 'name']):
+            if process.info['name'].lower() == 'steam.exe':
+                steam_processes.append(process)
+        
+        if not steam_processes:
+            result['success'] = True
+            print("[INFO] No Steam processes found to terminate")
+            return result
+        
+        # Terminate all Steam processes
+        for process in steam_processes:
+            try:
+                print(f"[INFO] Terminating Steam process (PID: {process.pid})")
+                process.terminate()
+                result['terminated_processes'] += 1
+            except psutil.NoSuchProcess:
+                # Process already terminated
+                continue
+            except Exception as e:
+                result['errors'].append(f"Failed to terminate Steam process (PID: {process.pid}): {e}")
+        
+        # Wait for processes to terminate gracefully
+        time.sleep(2)
+        
+        # Force kill any remaining Steam processes
+        for process in steam_processes:
+            try:
+                if process.is_running():
+                    print(f"[INFO] Force killing Steam process (PID: {process.pid})")
+                    process.kill()
+            except psutil.NoSuchProcess:
+                # Process already terminated
+                continue
+            except Exception as e:
+                result['errors'].append(f"Failed to force kill Steam process (PID: {process.pid}): {e}")
+        
+        # Final verification
+        if not is_steam_running():
+            result['success'] = True
+            print(f"[INFO] Successfully terminated {result['terminated_processes']} Steam process(es)")
+        else:
+            result['errors'].append("Some Steam processes may still be running")
+            
+    except Exception as e:
+        result['errors'].append(f"Unexpected error while terminating Steam: {e}")
+        print(f"[ERROR] Failed to terminate Steam: {e}")
+    
+    return result
+
+
+def run_steam_with_dll_injector(config):
+    """
+    Run Steam using the DLLInjector.exe from GreenLuma.
+    
+    Args:
+        config (configparser.ConfigParser): The loaded application configuration.
+        
+    Returns:
+        dict: Result dictionary with success status and details.
+    """
+    result = {
+        'success': False,
+        'errors': []
+    }
+    
+    try:
+        # Get GreenLuma path from config
+        greenluma_path = config.get('Paths', 'greenluma_path', fallback='')
+        if not greenluma_path:
+            result['errors'].append("GreenLuma path not configured")
+            return result
+        
+        # Construct path to DLLInjector.exe
+        dll_injector_path = os.path.join(greenluma_path, 'NormalMode', 'DLLInjector.exe')
+        
+        if not os.path.exists(dll_injector_path):
+            result['errors'].append(f"DLLInjector.exe not found at: {dll_injector_path}")
+            return result
+        
+        print(f"[INFO] Starting Steam via DLLInjector: {dll_injector_path}")
+        
+        # Start DLLInjector.exe (which will launch Steam with the DLL injected)
+        subprocess.Popen([dll_injector_path], cwd=os.path.dirname(dll_injector_path))
+        
+        result['success'] = True
+        print("[INFO] Steam started successfully via DLLInjector")
+        
+    except Exception as e:
+        result['errors'].append(f"Failed to start Steam via DLLInjector: {e}")
+        print(f"[ERROR] Failed to start Steam: {e}")
+    
+    return result
 
 
 # =============================================================================
@@ -228,6 +360,14 @@ class App(TkinterDnD.Tk):
         # Renamed to `app_config` to avoid collision with the built-in `self.config()` method.
         self.app_config = config
 
+        # Terminate Steam if running (first thing we do)
+        print("[INFO] Checking for running Steam processes...")
+        if is_steam_running():
+            print("[INFO] Steam is running, terminating...")
+            self.terminate_steam_startup()
+        else:
+            print("[INFO] Steam is not running")
+
         # Initialize database and game installer
         self.db = get_database_manager()
         self.game_installer = GameInstaller(config)
@@ -302,20 +442,31 @@ class App(TkinterDnD.Tk):
         self.buttons_frame = ctk.CTkFrame(self, fg_color="transparent")
         self.buttons_frame.pack(pady=(10, 0), padx=20, fill="x")
 
+        # --- Run Steam Button (Large and Prominent) ---
+        self.run_steam_button = ctk.CTkButton(self.buttons_frame, text="🚀 RUN STEAM", font=("Segoe UI", 18, "bold"), 
+                                             text_color=Theme.BG_DARK, fg_color=Theme.GOLD, hover_color=Theme.DARK_GOLD, 
+                                             border_width=0, corner_radius=12, command=self.on_run_steam_click, 
+                                             width=200, height=50)
+        self.run_steam_button.pack(side="top", pady=(0, 15))
+
+        # --- Secondary Buttons Frame ---
+        self.secondary_buttons_frame = ctk.CTkFrame(self, fg_color="transparent")
+        self.secondary_buttons_frame.pack(pady=(0, 0), padx=20, fill="x")
+
         # --- Refresh Stats Button ---
-        self.refresh_button = ctk.CTkButton(self.buttons_frame, text="Refresh Stats", font=Theme.FONT_PRIMARY, text_color=Theme.BG_DARK,
+        self.refresh_button = ctk.CTkButton(self.secondary_buttons_frame, text="Refresh Stats", font=Theme.FONT_PRIMARY, text_color=Theme.BG_DARK,
                                            fg_color=Theme.STATUS_SUCCESS, hover_color="#4caf50", border_width=0,
                                            corner_radius=8, command=self.update_database_stats, width=120)
         self.refresh_button.pack(side="left", padx=(0, 10))
 
         # --- Clear Data Button ---
-        self.clear_data_button = ctk.CTkButton(self.buttons_frame, text="Clear Data", font=Theme.FONT_PRIMARY, text_color=Theme.TEXT_PRIMARY,
+        self.clear_data_button = ctk.CTkButton(self.secondary_buttons_frame, text="Clear Data", font=Theme.FONT_PRIMARY, text_color=Theme.TEXT_PRIMARY,
                                               fg_color=Theme.STATUS_ERROR, hover_color="#c62828", border_width=0,
                                               corner_radius=8, command=self.on_clear_data_click, width=120)
         self.clear_data_button.pack(side="left", padx=(0, 10))
 
         # --- Uninstall Button ---
-        self.uninstall_button = ctk.CTkButton(self.buttons_frame, text="Uninstall AppID", font=Theme.FONT_PRIMARY, text_color=Theme.TEXT_PRIMARY,
+        self.uninstall_button = ctk.CTkButton(self.secondary_buttons_frame, text="Uninstall AppID", font=Theme.FONT_PRIMARY, text_color=Theme.TEXT_PRIMARY,
                                              fg_color=Theme.STATUS_WARNING, hover_color="#ff9800", border_width=0,
                                              corner_radius=8, command=self.on_uninstall_click, width=120)
         self.uninstall_button.pack(side="left", padx=(0, 10))
@@ -461,6 +612,65 @@ class App(TkinterDnD.Tk):
         except Exception as e:
             self.update_status(f"Error during uninstallation: {e}", "error")
             print(f"[ERROR] Failed to uninstall AppID {app_id}: {e}")
+
+    def terminate_steam_startup(self):
+        """
+        Terminate Steam processes at application startup.
+        """
+        try:
+            result = terminate_steam()
+            if result['success']:
+                if result['terminated_processes'] > 0:
+                    print(f"[INFO] Terminated {result['terminated_processes']} Steam process(es) at startup")
+                else:
+                    print("[INFO] No Steam processes to terminate at startup")
+            else:
+                print(f"[WARNING] Failed to terminate Steam at startup: {'; '.join(result['errors'])}")
+        except Exception as e:
+            print(f"[ERROR] Error terminating Steam at startup: {e}")
+
+    def on_run_steam_click(self):
+        """
+        Handle the "Run Steam" button click.
+        Check if Steam is running, terminate it if needed, then launch via DLLInjector.
+        """
+        self.update_status("Preparing to launch Steam...", "info")
+        
+        try:
+            # Check if Steam is running
+            if is_steam_running():
+                self.update_status("Steam is running. Terminating existing processes...", "warning")
+                
+                # Terminate Steam
+                result = terminate_steam()
+                if result['success']:
+                    if result['terminated_processes'] > 0:
+                        self.update_status(f"Terminated {result['terminated_processes']} Steam process(es)", "success")
+                    else:
+                        self.update_status("No Steam processes to terminate", "info")
+                else:
+                    error_msg = '; '.join(result['errors'])
+                    self.update_status(f"Failed to terminate Steam: {error_msg}", "error")
+                    return
+                
+                # Wait a moment for processes to fully terminate
+                self.update_status("Waiting for Steam to fully terminate...", "info")
+                self.update_idletasks()
+                time.sleep(3)
+            
+            # Launch Steam via DLLInjector
+            self.update_status("Launching Steam via DLLInjector...", "info")
+            launch_result = run_steam_with_dll_injector(self.app_config)
+            
+            if launch_result['success']:
+                self.update_status("Steam launched successfully! 🚀", "success")
+            else:
+                error_msg = '; '.join(launch_result['errors'])
+                self.update_status(f"Failed to launch Steam: {error_msg}", "error")
+                
+        except Exception as e:
+            self.update_status(f"Error launching Steam: {e}", "error")
+            print(f"[ERROR] Failed to launch Steam: {e}")
 
     def update_status(self, message: str, level: str = "info"):
         """Provides colored feedback to the user via the status label at the bottom."""
