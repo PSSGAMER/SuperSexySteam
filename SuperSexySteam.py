@@ -38,6 +38,7 @@ from greenluma_manager import configure_greenluma_injector
 from database_manager import get_database_manager
 from game_installer import GameInstaller
 from system_cleaner import clear_all_data, uninstall_specific_appid
+from steam_game_search import search_games, find_appid
 
 
 # =============================================================================
@@ -471,6 +472,12 @@ class App(TkinterDnD.Tk):
                                              corner_radius=8, command=self.on_uninstall_click, width=120)
         self.uninstall_button.pack(side="left", padx=(0, 10))
 
+        # --- Steam Search Button ---
+        self.search_button = ctk.CTkButton(self.secondary_buttons_frame, text="🔍 Game Search", font=Theme.FONT_PRIMARY, text_color=Theme.TEXT_PRIMARY,
+                                          fg_color="#2196f3", hover_color="#1976d2", border_width=0,
+                                          corner_radius=8, command=self.on_search_click, width=120)
+        self.search_button.pack(side="left", padx=(0, 10))
+
         # --- Status Label ---
         self.status_label = ctk.CTkLabel(self, text="Ready for action. Drop files to install games instantly!", font=Theme.FONT_PRIMARY,
                                           text_color=Theme.TEXT_SECONDARY, bg_color="transparent")
@@ -671,6 +678,169 @@ class App(TkinterDnD.Tk):
         except Exception as e:
             self.update_status(f"Error launching Steam: {e}", "error")
             print(f"[ERROR] Failed to launch Steam: {e}")
+
+    def on_search_click(self):
+        """
+        Handle the "Game Search" button click.
+        Opens a new window where users can search for Steam games by name.
+        """
+        self.open_search_window()
+
+    def open_search_window(self):
+        """
+        Open the Steam Game Search window.
+        """
+        # Create a new window for game search
+        search_window = ctk.CTkToplevel(self)
+        search_window.title("Steam Game Search")
+        search_window.geometry("700x600")
+        search_window.configure(fg_color=Theme.BG_DARK)
+        
+        # Make the window stay on top
+        search_window.transient(self)
+        search_window.grab_set()
+        
+        # Try to set icon
+        try:
+            icon_path = os.path.join(os.path.dirname(__file__), "icon.ico")
+            if os.path.exists(icon_path):
+                search_window.wm_iconbitmap(icon_path)
+        except Exception:
+            pass
+        
+        # Title
+        title_label = ctk.CTkLabel(search_window, text="🔍 Steam Game Search", 
+                                  font=("Segoe UI", 24, "bold"), text_color=Theme.GOLD)
+        title_label.pack(pady=(20, 10))
+        
+        # Search frame
+        search_frame = ctk.CTkFrame(search_window, fg_color=Theme.BG_LIGHT, corner_radius=10)
+        search_frame.pack(padx=20, pady=10, fill="x")
+        
+        # Search label
+        search_label = ctk.CTkLabel(search_frame, text="Enter game name:", 
+                                   font=Theme.FONT_PRIMARY, text_color=Theme.TEXT_PRIMARY)
+        search_label.pack(pady=(15, 5))
+        
+        # Search entry
+        search_entry = ctk.CTkEntry(search_frame, placeholder_text="e.g., Counter-Strike 2, Portal, Half-Life...", 
+                                   font=Theme.FONT_PRIMARY, width=400, height=35)
+        search_entry.pack(pady=(0, 10))
+        
+        # Search button
+        search_btn = ctk.CTkButton(search_frame, text="🔍 Search Games", 
+                                  font=Theme.FONT_PRIMARY, text_color=Theme.BG_DARK,
+                                  fg_color=Theme.GOLD, hover_color=Theme.DARK_GOLD,
+                                  command=lambda: self.perform_search(search_entry.get(), results_frame, status_search))
+        search_btn.pack(pady=(0, 15))
+        
+        # Status label for search
+        status_search = ctk.CTkLabel(search_window, text="Enter a game name and click search", 
+                                    font=Theme.FONT_PRIMARY, text_color=Theme.TEXT_SECONDARY)
+        status_search.pack(pady=5)
+        
+        # Results frame with scrollbar
+        results_container = ctk.CTkFrame(search_window, fg_color=Theme.BG_LIGHT, corner_radius=10)
+        results_container.pack(padx=20, pady=10, fill="both", expand=True)
+        
+        # Results title
+        results_title = ctk.CTkLabel(results_container, text="Search Results", 
+                                    font=Theme.FONT_LARGE_BOLD, text_color=Theme.GOLD)
+        results_title.pack(pady=(10, 5))
+        
+        # Scrollable frame for results
+        results_frame = ctk.CTkScrollableFrame(results_container, fg_color="transparent")
+        results_frame.pack(padx=10, pady=(0, 10), fill="both", expand=True)
+        
+        # Bind Enter key to search
+        search_entry.bind("<Return>", lambda e: self.perform_search(search_entry.get(), results_frame, status_search))
+        
+        # Focus on the search entry
+        search_entry.focus()
+
+    def perform_search(self, query, results_frame, status_label):
+        """
+        Perform the actual Steam game search and display results.
+        
+        Args:
+            query (str): The search query entered by the user
+            results_frame: The scrollable frame to display results in
+            status_label: The status label to update with search progress
+        """
+        if not query or not query.strip():
+            status_label.configure(text="Please enter a game name to search", text_color=Theme.STATUS_ERROR)
+            return
+        
+        # Clear previous results
+        for widget in results_frame.winfo_children():
+            widget.destroy()
+        
+        # Update status
+        status_label.configure(text=f"Searching for '{query}'...", text_color=Theme.TEXT_SECONDARY)
+        results_frame.update_idletasks()
+        
+        try:
+            # Perform the search (max 20 results as specified)
+            games = search_games(query, max_results=20)
+            
+            if not games:
+                status_label.configure(text=f"No games found for '{query}'", text_color=Theme.STATUS_WARNING)
+                no_results_label = ctk.CTkLabel(results_frame, text="No games found. Try a different search term.", 
+                                               font=Theme.FONT_PRIMARY, text_color=Theme.TEXT_SECONDARY)
+                no_results_label.pack(pady=20)
+                return
+            
+            # Update status with results count
+            status_label.configure(text=f"Found {len(games)} games for '{query}'", text_color=Theme.STATUS_SUCCESS)
+            
+            # Display results
+            for i, game in enumerate(games, 1):
+                # Create a frame for each game result
+                game_frame = ctk.CTkFrame(results_frame, fg_color=Theme.BG_DARK, corner_radius=8)
+                game_frame.pack(fill="x", padx=5, pady=5)
+                
+                # Game info frame
+                info_frame = ctk.CTkFrame(game_frame, fg_color="transparent")
+                info_frame.pack(fill="x", padx=10, pady=10)
+                
+                # Game number and name
+                name_label = ctk.CTkLabel(info_frame, text=f"{i}. {game['name']}", 
+                                         font=("Segoe UI", 14, "bold"), text_color=Theme.TEXT_PRIMARY, anchor="w")
+                name_label.pack(fill="x")
+                
+                # AppID and type
+                details_text = f"AppID: {game['appid']} | Type: {game['type']}"
+                details_label = ctk.CTkLabel(info_frame, text=details_text, 
+                                           font=Theme.FONT_PRIMARY, text_color=Theme.TEXT_SECONDARY, anchor="w")
+                details_label.pack(fill="x")
+                
+                # Copy AppID button
+                copy_btn = ctk.CTkButton(info_frame, text=f"📋 Copy AppID ({game['appid']})", 
+                                        font=("Segoe UI", 11), width=150, height=25,
+                                        fg_color=Theme.STATUS_SUCCESS, hover_color="#4caf50",
+                                        command=lambda aid=game['appid']: self.copy_appid_to_clipboard(aid, status_label))
+                copy_btn.pack(pady=(5, 0), anchor="w")
+                
+        except Exception as e:
+            status_label.configure(text=f"Error searching: {str(e)}", text_color=Theme.STATUS_ERROR)
+            print(f"[ERROR] Search failed: {e}")
+
+    def copy_appid_to_clipboard(self, appid, status_label):
+        """
+        Copy the AppID to clipboard and show feedback.
+        
+        Args:
+            appid: The AppID to copy
+            status_label: Status label to show feedback
+        """
+        try:
+            self.clipboard_clear()
+            self.clipboard_append(str(appid))
+            status_label.configure(text=f"AppID {appid} copied to clipboard!", text_color=Theme.STATUS_SUCCESS)
+            print(f"[INFO] AppID {appid} copied to clipboard")
+        except Exception as e:
+            status_label.configure(text=f"Failed to copy AppID: {str(e)}", text_color=Theme.STATUS_ERROR)
+            print(f"[ERROR] Failed to copy AppID {appid}: {e}")
 
     def update_status(self, message: str, level: str = "info"):
         """Provides colored feedback to the user via the status label at the bottom."""
