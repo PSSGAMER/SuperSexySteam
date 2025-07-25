@@ -1182,9 +1182,6 @@ if __name__ == "__main__":
 
         config['Paths'] = {'steam_path': steam_path, 'greenluma_path': gl_path}
         
-        # Add default debug setting (False = console hidden for end users)
-        config['Debug'] = {'show_console': 'False'}
-        
         with open(config_file, 'w') as f:
             config.write(f)
         
@@ -1195,15 +1192,6 @@ if __name__ == "__main__":
 
     # Load the config and launch the main application.
     config.read(config_file)
-    
-    # Handle console window visibility based on debug setting
-    debug_mode = config.getboolean('Debug', 'show_console', fallback=False)
-    if not debug_mode and sys.platform == "win32":
-        try:
-            import ctypes
-            ctypes.windll.user32.ShowWindow(ctypes.windll.kernel32.GetConsoleWindow(), 0)
-        except Exception:
-            pass  # Silently ignore if hiding console fails
     
     app = App(config)
     app.mainloop()
