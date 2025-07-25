@@ -15,13 +15,8 @@ import sys
 
 def parse_lua_for_depots(lua_path):
     """
-    Reads a given .lua file and extracts all DepotIDs that have a corresponding
-    DepotKey. Supports multiple Lua formats:
-    1. adddepot() function calls: adddepot(12345, "HEXKEY")
-    2. addappid() function calls: addappid(12345, 1, "HEXKEY")
-    3. Variable assignments: depot_12345_1 = "KEY123"
-    4. Table entries: ["12345"] = "KEY123"
-    5. Comment format: -- DepotID: 12345 Key: KEY123
+    Reads a given .lua file and extracts all DepotID that have a corresponding
+    DepotKey, properly distinguishing between the AppID (from filename) and actual DepotID.
 
     Args:
         lua_path (str): The full path to the .lua file to be parsed.
@@ -31,6 +26,10 @@ def parse_lua_for_depots(lua_path):
               and has the keys 'depot_id' and 'depot_key'. Returns an empty
               list if the file is not found or an error occurs.
     """
+    # Extract AppID from filename to exclude it from depot results
+    filename = os.path.basename(lua_path)
+    app_id = os.path.splitext(filename)[0]
+    
     # Multiple regex patterns to handle different Lua formats
     patterns = [
         # Pattern 1: adddepot with key: adddepot(12345, "HEXKEY")
@@ -50,10 +49,14 @@ def parse_lua_for_depots(lua_path):
                     if match:
                         depot_id = match.group(1)
                         depot_key = match.group(2)
-                        extracted_depots.append({
-                            'depot_id': depot_id,
-                            'depot_key': depot_key
-                        })
+                        
+                        # Skip if this ID matches the AppID (from filename)
+                        # Only actual depot IDs with keys should be included
+                        if depot_id != app_id:
+                            extracted_depots.append({
+                                'depot_id': depot_id,
+                                'depot_key': depot_key
+                            })
                         break  # Stop at first match for this line
                         
     except FileNotFoundError:
@@ -66,20 +69,33 @@ def parse_lua_for_depots(lua_path):
 
 def parse_lua_for_all_depots(lua_path):
     """
-    Reads a given .lua file and extracts all DepotIDs from addappid and adddepot calls,
-    regardless of whether they have decryption keys or not.
+    Reads a given .lua file and extracts all DepotID from addappid and adddepot calls,
+    properly distinguishing between the AppID (from filename) and actual DepotIDs.
     
-    This function is used for GreenLuma AppList processing where we need
-    all depot IDs, not just those with keys.
+    This function uses the filename to determine the AppID and only treats other
+    numeric IDs as DepotIDs, providing accurate categorization.
 
     Args:
         lua_path (str): The full path to the .lua file to be parsed.
 
     Returns:
-        list: A list of dictionaries. Each dictionary represents a found depot
-              and has the key 'depot_id' and optionally 'depot_key'. Returns an empty
-              list if the file is not found or an error occurs.
+        dict: A dictionary with 'app_id' (from filename) and 'depots' (list of depot dicts).
+              Returns empty data if the file is not found or an error occurs.
     """
+    # Extract AppID from filename
+    filename = os.path.basename(lua_path)
+    app_id = os.path.splitext(filename)[0]
+    
+    result = {
+        'app_id': app_id,
+        'depots': []
+    }
+    
+    # Validate that filename is a numeric AppID
+    if not app_id.isdigit():
+        print(f"  [Warning] Filename '{filename}' does not contain a valid numeric AppID")
+        return result
+
     # Multiple regex patterns to handle different Lua formats
     patterns = [
         # Pattern 1: adddepot with key: adddepot(12345, "KEY123")
@@ -109,6 +125,11 @@ def parse_lua_for_all_depots(lua_path):
                     if match:
                         depot_id = match.group(1)
                         
+                        # Skip if this ID matches the AppID (from filename)
+                        # Only actual depot IDs should be included
+                        if depot_id == app_id:
+                            continue
+                        
                         # Check if we already have this depot
                         existing_depot = next((d for d in extracted_depots if d['depot_id'] == depot_id), None)
                         
@@ -124,13 +145,14 @@ def parse_lua_for_all_depots(lua_path):
                             extracted_depots.append(depot_data)
                         
                         break  # Stop at first match for this line
-                        
+    
     except FileNotFoundError:
         print(f"  [Warning] Could not find file during parsing: {lua_path}")
     except Exception as e:
         print(f"  [Error] Failed to read or parse {os.path.basename(lua_path)}: {e}")
 
-    return extracted_depots
+    result['depots'] = extracted_depots
+    return result
 
 
 def parse_all_lua_files(data_dir='data', verbose=True):
@@ -175,6 +197,52 @@ def parse_all_lua_files(data_dir='data', verbose=True):
         print(f"Found {lua_files_found} .lua file(s) containing {len(all_depots)} depot keys total.")
     
     return all_depots
+
+
+def parse_all_lua_files_structured(data_dir='data', verbose=True):
+    """
+    Scans the entire 'data' directory for .lua files and extracts all depot
+    information, returning structured data with AppIDs and their associated depots.
+
+    Args:
+        data_dir (str): The directory to scan for .lua files. Defaults to 'data'.
+        verbose (bool): Whether to print progress information. Defaults to True.
+
+    Returns:
+        list: A list of dictionaries. Each dictionary has 'app_id' and 'depots' keys.
+              Returns empty list if no data directory is found or no .lua files exist.
+    """
+    all_apps = []
+    
+    if not os.path.isdir(data_dir):
+        if verbose:
+            print(f"[Warning] Data directory '{data_dir}' not found.")
+        return all_apps
+    
+    lua_files_found = 0
+    if verbose:
+        print(f"Scanning '{data_dir}' directory for .lua files...")
+    
+    # Walk through all subdirectories in the data folder
+    for root, dirs, files in os.walk(data_dir):
+        for filename in files:
+            if filename.lower().endswith('.lua'):
+                lua_path = os.path.join(root, filename)
+                
+                # Use the improved function that properly categorizes AppID vs DepotID
+                app_data = parse_lua_for_all_depots(lua_path)
+                
+                if verbose:
+                    print(f"  Processing {filename} (AppID: {app_data['app_id']}) - Found {len(app_data['depots'])} depots")
+                
+                all_apps.append(app_data)
+                lua_files_found += 1
+    
+    total_depots = sum(len(app['depots']) for app in all_apps)
+    if verbose:
+        print(f"Found {lua_files_found} .lua file(s) containing {total_depots} depot entries total.")
+    
+    return all_apps
 
 
 def get_unique_depots(all_depots):

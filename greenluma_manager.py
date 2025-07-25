@@ -12,53 +12,6 @@ import re
 # --- GREENLUMA APPLIST MANAGEMENT ---
 # =============================================================================
 
-def parse_lua_for_depots(lua_path):
-    """
-    Reads a given .lua file and extracts all DepotIDs from addappid calls.
-    It looks for any 'addappid(id, ...)' format, regardless of whether
-    they have decryption keys or not.
-
-    This function is designed to be resilient, ignoring comment lines and
-    extracting all depot IDs for GreenLuma AppList processing.
-
-    Args:
-        lua_path (str): The full path to the .lua file to be parsed.
-
-    Returns:
-        list: A list of dictionaries. Each dictionary represents a found depot
-              and has the key 'depot_id'. Returns an empty list if the file
-              is not found or an error occurs.
-    """
-    # This regex is crafted to match any addappid line with a depot ID.
-    # - `^\s*addappid\(`: Matches the start of the line and the function name.
-    # - `\s*`: Allows optional whitespace after the opening parenthesis.
-    # - `(\d+)`: Captures the numeric DepotID (Group 1).
-    # - `\s*`: Allows optional whitespace after the depot ID.
-    # - `[,\)]`: Matches either a comma (indicating more parameters) or closing parenthesis
-    depot_pattern = re.compile(r'^\s*addappid\(\s*(\d+)\s*[,\)]')
-
-    extracted_depots = []
-    try:
-        with open(lua_path, 'r', encoding='utf-8') as f:
-            for line in f:
-                # Ignore comment lines to avoid parsing them.
-                if line.strip().startswith('--'):
-                    continue
-
-                match = depot_pattern.match(line)
-                if match:
-                    depot_id = match.group(1)
-                    extracted_depots.append({
-                        'depot_id': depot_id
-                    })
-    except FileNotFoundError:
-        print(f"  [Warning] Could not find file during parsing: {lua_path}")
-    except Exception as e:
-        print(f"  [Error] Failed to read or parse {os.path.basename(lua_path)}: {e}")
-
-    return extracted_depots
-
-
 def clear_greenluma_applist(gl_path, verbose=True):
     """
     Clears all entries from the GreenLuma AppList folder.
@@ -105,29 +58,37 @@ def clear_greenluma_applist(gl_path, verbose=True):
 
 def get_greenluma_applist_stats(gl_path, verbose=True):
     """
-    Gets statistics about the current GreenLuma AppList.
+    Gets statistics about the current GreenLuma AppList using database information
+    to accurately categorize AppIDs vs DepotIDs.
 
     Args:
         gl_path (str): The path to the main GreenLuma folder.
         verbose (bool): Whether to print information.
 
     Returns:
-        dict: Statistics with keys: 'total_files', 'appids', 'depots', 'other', 'total_applist_files'
+        dict: Statistics with keys: 'total_files', 'appids', 'depots', 'other'
     """
-    stats = {'total_files': 0, 'appids': 0, 'depots': 0, 'other': 0, 'total_applist_files': 0}
+    from database_manager import get_database_manager
+    
+    stats = {'total_files': 0, 'appids': 0, 'depots': 0, 'other': 0}
     
     applist_dir = os.path.join(gl_path, 'NormalMode', 'AppList')
     if not os.path.isdir(applist_dir):
         if verbose:
             print(f"[Info] GreenLuma AppList directory not found or empty: {applist_dir}")
             print(f"[Info] This is normal for a fresh installation or test environment")
-        stats['total_applist_files'] = 0
         return stats
 
     try:
+        # Get database information for accurate categorization
+        db = get_database_manager()
+        installed_appids = set(db.get_all_installed_appids())
+        all_depots = db.get_all_depots_for_installed_apps()
+        depot_ids = set(depot['depot_id'] for depot in all_depots)
+        
         all_files = os.listdir(applist_dir)
         txt_files = [f for f in all_files if f.endswith('.txt')]
-        stats['total_applist_files'] = len(txt_files)
+        stats['total_files'] = len(txt_files)
         
         if not txt_files:
             if verbose:
@@ -136,17 +97,19 @@ def get_greenluma_applist_stats(gl_path, verbose=True):
             return stats
         
         for filename in txt_files:
-            stats['total_files'] += 1
             filepath = os.path.join(applist_dir, filename)
             try:
                 with open(filepath, 'r', encoding='utf-8') as f:
                     content = f.read().strip()
                     if content.isdigit():
-                        # Heuristic: shorter numbers are likely AppIDs, longer ones are DepotIDs
-                        if len(content) <= 7:  # Typical AppID length
+                        # Use database to accurately categorize IDs
+                        if content in installed_appids:
                             stats['appids'] += 1
-                        else:  # Likely DepotID
+                        elif content in depot_ids:
                             stats['depots'] += 1
+                        else:
+                            # ID not found in database - could be legacy or external
+                            stats['other'] += 1
                     else:
                         stats['other'] += 1
             except Exception:
@@ -155,9 +118,9 @@ def get_greenluma_applist_stats(gl_path, verbose=True):
         if verbose:
             if stats['total_files'] > 0:
                 print(f"GreenLuma AppList stats: {stats['total_files']} files total")
-                print(f"  - Estimated AppIDs: {stats['appids']}")
-                print(f"  - Estimated DepotIDs: {stats['depots']}")
-                print(f"  - Other entries: {stats['other']}")
+                print(f"  - AppIDs: {stats['appids']}")
+                print(f"  - DepotIDs: {stats['depots']}")
+                print(f"  - Other/Unknown entries: {stats['other']}")
             else:
                 print(f"[Info] GreenLuma AppList directory exists but contains no .txt files")
         
@@ -197,11 +160,9 @@ def configure_greenluma_injector(steam_path, greenluma_path, verbose=True):
         return False
     
     try:
-        # Construct the paths using Windows-style backslashes
-        # Point to the specific executable and DLL files
-        # Escape backslashes for regex use
-        steam_exe_path = (steam_path.replace('/', '\\') + '\\Steam.exe').replace('\\', '\\\\')
-        greenluma_dll_path = (greenluma_path.replace('/', '\\') + '\\NormalMode\\GreenLuma_2025_x86.dll').replace('\\', '\\\\')
+        # Construct the paths using proper path joining and normalization
+        steam_exe_path = os.path.join(steam_path, 'Steam.exe').replace('\\', '\\\\')
+        greenluma_dll_path = os.path.join(greenluma_path, 'NormalMode', 'GreenLuma_2025_x86.dll').replace('\\', '\\\\')
         
         # Read the current file content as text to preserve formatting and comments
         with open(injector_ini_path, 'r', encoding='utf-8') as f:
@@ -315,6 +276,7 @@ def validate_greenluma_installation(greenluma_path, verbose=True):
 def process_single_appid_for_greenluma(gl_path, app_id, depots, verbose=True):
     """
     Add a single AppID and its depots to the GreenLuma AppList.
+    Automatically removes duplicates before adding new entries to maintain a clean AppList.
     
     Args:
         gl_path (str): Path to the main GreenLuma folder
@@ -328,7 +290,14 @@ def process_single_appid_for_greenluma(gl_path, app_id, depots, verbose=True):
     result = {
         'success': False,
         'errors': [],
-        'stats': {'appids_added': 0, 'depots_added': 0, 'files_created': 0}
+        'warnings': [],
+        'stats': {
+            'appids_added': 0, 
+            'depots_added': 0, 
+            'files_created': 0, 
+            'skipped_duplicates': 0,
+            'duplicates_cleaned': 0
+        }
     }
     
     try:
@@ -345,50 +314,101 @@ def process_single_appid_for_greenluma(gl_path, app_id, depots, verbose=True):
                 result['errors'].append(f"Could not create AppList directory: {e}")
                 return result
         
-        # Find the next available index
+        # Step 1: Automatically clean up any existing duplicates
+        if verbose:
+            print(f"  Checking for existing duplicates...")
+        
+        duplicate_check = check_for_duplicate_ids_in_applist(gl_path, verbose=False)
+        if duplicate_check['has_duplicates']:
+            if verbose:
+                print(f"  Found {duplicate_check['duplicate_count']} duplicate files, cleaning up...")
+            
+            cleanup_result = remove_duplicate_ids_from_applist(gl_path, verbose=False)
+            if cleanup_result['success']:
+                result['stats']['duplicates_cleaned'] = cleanup_result['stats']['duplicates_removed']
+                if verbose and cleanup_result['stats']['duplicates_removed'] > 0:
+                    print(f"  Removed {cleanup_result['stats']['duplicates_removed']} duplicate files")
+            else:
+                result['warnings'].extend(cleanup_result.get('errors', []))
+        
+        # Step 2: Scan existing files to check for duplicates of what we're about to add
+        existing_ids = set()
         try:
             existing_files = os.listdir(applist_dir)
-            indices = [int(os.path.splitext(f)[0]) for f in existing_files 
-                      if f.endswith('.txt') and os.path.splitext(f)[0].isdigit()]
+            indices = []
+            
+            for filename in existing_files:
+                if filename.endswith('.txt'):
+                    filepath = os.path.join(applist_dir, filename)
+                    try:
+                        with open(filepath, 'r', encoding='utf-8') as f:
+                            content = f.read().strip()
+                        if content.isdigit():
+                            existing_ids.add(content)
+                        
+                        # Track indices for next available index calculation
+                        file_index = os.path.splitext(filename)[0]
+                        if file_index.isdigit():
+                            indices.append(int(file_index))
+                    except Exception:
+                        # Skip files we can't read
+                        pass
+            
             next_index = max(indices) + 1 if indices else 0
         except Exception as e:
-            result['errors'].append(f"Could not determine next file index: {e}")
+            result['errors'].append(f"Could not scan existing files: {e}")
             return result
         
-        # Write AppID
-        appid_filename = f"{next_index}.txt"
-        appid_filepath = os.path.join(applist_dir, appid_filename)
-        try:
-            with open(appid_filepath, 'w', encoding='utf-8') as f:
-                f.write(f"{app_id}\n")
-            result['stats']['appids_added'] = 1
-            result['stats']['files_created'] += 1
+        # Step 3: Add AppID if it doesn't already exist
+        if app_id in existing_ids:
             if verbose:
-                print(f"  - Created {appid_filename} with AppID {app_id}")
-        except Exception as e:
-            result['errors'].append(f"Failed to write AppID file: {e}")
-            return result
+                print(f"  - AppID {app_id} already exists in AppList, skipping")
+            result['warnings'].append(f"AppID {app_id} already exists")
+            result['stats']['skipped_duplicates'] += 1
+        else:
+            # Write AppID
+            appid_filename = f"{next_index}.txt"
+            appid_filepath = os.path.join(applist_dir, appid_filename)
+            try:
+                with open(appid_filepath, 'w', encoding='utf-8') as f:
+                    f.write(f"{app_id}\n")
+                result['stats']['appids_added'] = 1
+                result['stats']['files_created'] += 1
+                if verbose:
+                    print(f"  - Created {appid_filename} with AppID {app_id}")
+                next_index += 1
+            except Exception as e:
+                result['errors'].append(f"Failed to write AppID file: {e}")
+                return result
         
-        # Write depots
+        # Step 4: Add depots (only if they don't already exist)
         for depot in depots:
-            next_index += 1
+            depot_id = depot['depot_id']
+            if depot_id in existing_ids:
+                if verbose:
+                    print(f"  - DepotID {depot_id} already exists in AppList, skipping")
+                result['stats']['skipped_duplicates'] += 1
+                continue
+                
             depot_filename = f"{next_index}.txt"
             depot_filepath = os.path.join(applist_dir, depot_filename)
             try:
                 with open(depot_filepath, 'w', encoding='utf-8') as f:
-                    f.write(f"{depot['depot_id']}\n")
+                    f.write(f"{depot_id}\n")
                 result['stats']['depots_added'] += 1
                 result['stats']['files_created'] += 1
                 if verbose:
-                    print(f"  - Created {depot_filename} with DepotID {depot['depot_id']}")
+                    print(f"  - Created {depot_filename} with DepotID {depot_id}")
+                next_index += 1
             except Exception as e:
-                result['errors'].append(f"Failed to write depot file for {depot['depot_id']}: {e}")
+                result['errors'].append(f"Failed to write depot file for {depot_id}: {e}")
                 # Continue with other depots even if one fails
         
         result['success'] = True
         if verbose:
             stats = result['stats']
-            print(f"  Successfully added AppID {app_id} with {stats['depots_added']} depots ({stats['files_created']} files created)")
+            cleanup_msg = f", cleaned {stats['duplicates_cleaned']} duplicates" if stats['duplicates_cleaned'] > 0 else ""
+            print(f"  Successfully processed AppID {app_id}: {stats['appids_added']} AppIDs + {stats['depots_added']} depots added, {stats['skipped_duplicates']} duplicates skipped ({stats['files_created']} files created{cleanup_msg})")
         
     except Exception as e:
         result['errors'].append(f"Unexpected error: {e}")
@@ -512,6 +532,252 @@ def remove_appid_from_greenluma(gl_path, app_id, depots, verbose=True):
 
 
 # =============================================================================
+# --- GREENLUMA DUPLICATE MANAGEMENT ---
+# =============================================================================
+
+def remove_duplicate_ids_from_applist(gl_path, verbose=True):
+    """
+    Detects and removes duplicate IDs from the GreenLuma AppList folder.
+    Keeps the first occurrence of each ID and removes subsequent duplicates,
+    then renumbers all files sequentially.
+
+    Args:
+        gl_path (str): The path to the main GreenLuma folder.
+        verbose (bool): Whether to print progress information.
+
+    Returns:
+        dict: Result with success status, errors, statistics, and duplicate details
+    """
+    result = {
+        'success': False,
+        'errors': [],
+        'stats': {
+            'total_files_scanned': 0,
+            'duplicates_found': 0,
+            'duplicates_removed': 0,
+            'files_after_cleanup': 0
+        },
+        'duplicates': {}  # {id: [list of filenames that contained this id]}
+    }
+    
+    try:
+        if verbose:
+            print(f"\nScanning GreenLuma AppList for duplicates: {gl_path}")
+        
+        applist_dir = os.path.join(gl_path, 'NormalMode', 'AppList')
+        if not os.path.isdir(applist_dir):
+            if verbose:
+                print(f"[Info] GreenLuma AppList directory not found: {applist_dir}")
+                print(f"[Info] This is normal for a fresh installation")
+            result['success'] = True
+            return result
+
+        # Read all files and track which IDs we've seen
+        seen_ids = {}  # {id: first_filename_that_had_it}
+        duplicate_files = []  # [(filename, filepath, id)]
+        valid_files = []  # [(filename, filepath, id)]
+        
+        try:
+            existing_files = os.listdir(applist_dir)
+            txt_files = [f for f in existing_files if f.endswith('.txt')]
+            result['stats']['total_files_scanned'] = len(txt_files)
+            
+            if verbose and txt_files:
+                print(f"  Scanning {len(txt_files)} AppList files...")
+            elif verbose:
+                print(f"  No .txt files found in AppList directory")
+                result['success'] = True
+                return result
+            
+            # Sort files by index to process in order
+            txt_files.sort(key=lambda x: int(os.path.splitext(x)[0]) if os.path.splitext(x)[0].isdigit() else 999999)
+            
+            for filename in txt_files:
+                filepath = os.path.join(applist_dir, filename)
+                try:
+                    with open(filepath, 'r', encoding='utf-8') as f:
+                        content = f.read().strip()
+                    
+                    if content.isdigit():
+                        if content in seen_ids:
+                            # This is a duplicate
+                            duplicate_files.append((filename, filepath, content))
+                            if content not in result['duplicates']:
+                                result['duplicates'][content] = []
+                            result['duplicates'][content].append(filename)
+                            result['stats']['duplicates_found'] += 1
+                            if verbose:
+                                print(f"    DUPLICATE: {filename} contains {content} (first seen in {seen_ids[content]})")
+                        else:
+                            # First time seeing this ID
+                            seen_ids[content] = filename
+                            valid_files.append((filename, filepath, content))
+                            if content not in result['duplicates']:
+                                result['duplicates'][content] = []
+                            result['duplicates'][content].append(filename)
+                    else:
+                        # Invalid content, treat as valid file but warn
+                        valid_files.append((filename, filepath, content))
+                        if verbose:
+                            print(f"    WARNING: {filename} contains non-numeric content: {content}")
+                        
+                except Exception as e:
+                    if verbose:
+                        print(f"    ERROR: Could not read file {filename}: {e}")
+                    # Keep files we can't read
+                    valid_files.append((filename, filepath, ""))
+        except Exception as e:
+            result['errors'].append(f"Failed to scan AppList directory: {e}")
+            return result
+
+        # Remove duplicate files
+        for filename, filepath, content in duplicate_files:
+            try:
+                os.remove(filepath)
+                result['stats']['duplicates_removed'] += 1
+                if verbose:
+                    print(f"    REMOVED: {filename} (duplicate of ID {content})")
+            except Exception as e:
+                result['errors'].append(f"Failed to remove duplicate file {filename}: {e}")
+
+        # Renumber remaining files to maintain sequential order (0, 1, 2, 3...)
+        if valid_files:
+            # Sort by original index to maintain order
+            valid_files.sort(key=lambda x: int(os.path.splitext(x[0])[0]) if os.path.splitext(x[0])[0].isdigit() else 999999)
+            
+            # Rename files to sequential indices
+            for i, (old_filename, old_filepath, content) in enumerate(valid_files):
+                new_filename = f"{i}.txt"
+                new_filepath = os.path.join(applist_dir, new_filename)
+                
+                if old_filename != new_filename:
+                    try:
+                        # Create new file with correct name
+                        with open(new_filepath, 'w', encoding='utf-8') as f:
+                            f.write(f"{content}\n")
+                        
+                        # Remove old file if it's different
+                        if old_filepath != new_filepath:
+                            os.remove(old_filepath)
+                        
+                        if verbose:
+                            print(f"    RENUMBERED: {old_filename} -> {new_filename}")
+                            
+                    except Exception as e:
+                        result['errors'].append(f"Failed to renumber {old_filename} to {new_filename}: {e}")
+        
+        result['stats']['files_after_cleanup'] = len(valid_files)
+        result['success'] = True
+        
+        if verbose:
+            stats = result['stats']
+            print(f"\n  Duplicate cleanup completed:")
+            print(f"    Files scanned: {stats['total_files_scanned']}")
+            print(f"    Duplicates found: {stats['duplicates_found']}")
+            print(f"    Duplicates removed: {stats['duplicates_removed']}")
+            print(f"    Files remaining: {stats['files_after_cleanup']}")
+            
+            if result['duplicates']:
+                print(f"\n  Duplicate summary:")
+                for app_id, filenames in result['duplicates'].items():
+                    if len(filenames) > 1:
+                        print(f"    ID {app_id}: found in {len(filenames)} files ({', '.join(filenames)})")
+        
+    except Exception as e:
+        result['errors'].append(f"Unexpected error: {e}")
+    
+    return result
+
+
+def check_for_duplicate_ids_in_applist(gl_path, verbose=True):
+    """
+    Checks for duplicate IDs in the GreenLuma AppList folder without removing them.
+    Useful for diagnostics and reporting.
+
+    Args:
+        gl_path (str): The path to the main GreenLuma folder.
+        verbose (bool): Whether to print progress information.
+
+    Returns:
+        dict: Result with duplicate information and statistics
+    """
+    result = {
+        'has_duplicates': False,
+        'total_files': 0,
+        'unique_ids': 0,
+        'duplicate_count': 0,
+        'duplicates': {}  # {id: [list of filenames that contain this id]}
+    }
+    
+    try:
+        applist_dir = os.path.join(gl_path, 'NormalMode', 'AppList')
+        if not os.path.isdir(applist_dir):
+            if verbose:
+                print(f"[Info] GreenLuma AppList directory not found: {applist_dir}")
+            return result
+
+        # Read all files and track IDs
+        id_to_files = {}  # {id: [list of filenames]}
+        
+        existing_files = os.listdir(applist_dir)
+        txt_files = [f for f in existing_files if f.endswith('.txt')]
+        result['total_files'] = len(txt_files)
+        
+        if not txt_files:
+            if verbose:
+                print(f"[Info] No .txt files found in AppList directory")
+            return result
+        
+        if verbose:
+            print(f"Checking {len(txt_files)} AppList files for duplicates...")
+        
+        # Sort files by index for consistent reporting
+        txt_files.sort(key=lambda x: int(os.path.splitext(x)[0]) if os.path.splitext(x)[0].isdigit() else 999999)
+        
+        for filename in txt_files:
+            filepath = os.path.join(applist_dir, filename)
+            try:
+                with open(filepath, 'r', encoding='utf-8') as f:
+                    content = f.read().strip()
+                
+                if content.isdigit():
+                    if content not in id_to_files:
+                        id_to_files[content] = []
+                    id_to_files[content].append(filename)
+                    
+            except Exception as e:
+                if verbose:
+                    print(f"  WARNING: Could not read file {filename}: {e}")
+        
+        # Analyze for duplicates
+        result['unique_ids'] = len(id_to_files)
+        
+        for app_id, filenames in id_to_files.items():
+            if len(filenames) > 1:
+                result['has_duplicates'] = True
+                result['duplicate_count'] += len(filenames) - 1  # Number of extra files
+                result['duplicates'][app_id] = filenames
+                if verbose:
+                    print(f"  DUPLICATE: ID {app_id} found in {len(filenames)} files: {', '.join(filenames)}")
+        
+        if verbose:
+            if result['has_duplicates']:
+                print(f"\nDuplicate Summary:")
+                print(f"  Total files: {result['total_files']}")
+                print(f"  Unique IDs: {result['unique_ids']}")
+                print(f"  Duplicate files: {result['duplicate_count']}")
+                print(f"  IDs with duplicates: {len(result['duplicates'])}")
+            else:
+                print(f"  No duplicates found! All {result['total_files']} files contain unique IDs.")
+        
+    except Exception as e:
+        if verbose:
+            print(f"[Error] Failed to check for duplicates: {e}")
+    
+    return result
+
+
+# =============================================================================
 # --- MAIN EXECUTION FOR STANDALONE USE ---
 # =============================================================================
 
@@ -532,9 +798,11 @@ def main():
         print("  stats                 - Show AppList statistics")
         print("  clear                 - Clear all AppList entries")
         print("  configure <steam_path> - Configure DLL injector")
+        print("  check_duplicates       - Check for duplicate IDs in AppList (no removal)")
         print("Examples:")
         print("  python greenluma_manager.py \"C:\\GreenLuma\" validate")
         print("  python greenluma_manager.py \"C:\\GreenLuma\" configure \"C:\\Steam\"")
+        print("  python greenluma_manager.py \"C:\\GreenLuma\" check_duplicates")
         return
     
     greenluma_path = sys.argv[1]
@@ -566,6 +834,7 @@ def main():
     
     else:
         print(f"[Error] Unknown command: {command}")
+        print("Available commands: validate, stats, clear, configure")
 
 
 if __name__ == "__main__":
