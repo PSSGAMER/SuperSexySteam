@@ -141,6 +141,27 @@ def get_game_info(appid: int) -> Optional[Dict[str, any]]:
         return None
 
 
+def get_game_name_by_appid(appid: str) -> str:
+    """
+    Get the game name by AppID. Returns AppID as fallback if name not found.
+    
+    Args:
+        appid (str): Steam AppID as string
+    
+    Returns:
+        str: Game name if found, otherwise "AppID {appid}"
+    """
+    try:
+        game_info = get_game_info(int(appid))
+        if game_info and game_info.get("name"):
+            return game_info["name"]
+        else:
+            return f"AppID {appid}"
+    except Exception as e:
+        print(f"Error getting game name for AppID {appid}: {e}")
+        return f"AppID {appid}"
+
+
 if __name__ == "__main__":
     name = input("Enter the Steam game name: ").strip()
     appid = find_appid(name)

@@ -38,11 +38,19 @@ class GameDatabaseManager:
                 cursor.execute('''
                     CREATE TABLE IF NOT EXISTS appids (
                         app_id TEXT PRIMARY KEY,
+                        game_name TEXT,
                         date_added TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                         last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                         is_installed BOOLEAN DEFAULT 1
                     )
                 ''')
+                
+                # Check if game_name column exists, if not add it (for migration)
+                cursor.execute("PRAGMA table_info(appids)")
+                columns = [column[1] for column in cursor.fetchall()]
+                if 'game_name' not in columns:
+                    cursor.execute('ALTER TABLE appids ADD COLUMN game_name TEXT')
+                    print("[INFO] Added game_name column to existing database")
                 
                 # Create Depots table
                 cursor.execute('''
@@ -151,13 +159,14 @@ class GameDatabaseManager:
             print(f"[Error] Failed to create new connection: {e}")
             raise
 
-    def add_appid_with_depots(self, app_id: str, depots: List[Dict[str, str]]) -> bool:
+    def add_appid_with_depots(self, app_id: str, depots: List[Dict[str, str]], game_name: str = None) -> bool:
         """
         Add an AppID with its associated depots to the database.
         
         Args:
             app_id (str): The Steam AppID
             depots (List[Dict]): List of depot dictionaries with 'depot_id' and optional 'depot_key'
+            game_name (str): The name of the game (optional)
             
         Returns:
             bool: True if successful, False otherwise
@@ -173,9 +182,9 @@ class GameDatabaseManager:
                 
                 # Insert or update the AppID
                 cursor.execute('''
-                    INSERT OR REPLACE INTO appids (app_id, last_updated, is_installed)
-                    VALUES (?, CURRENT_TIMESTAMP, 1)
-                ''', (app_id,))
+                    INSERT OR REPLACE INTO appids (app_id, game_name, last_updated, is_installed)
+                    VALUES (?, ?, CURRENT_TIMESTAMP, 1)
+                ''', (app_id, game_name))
                 
                 # Remove existing depots for this AppID
                 cursor.execute('DELETE FROM depots WHERE app_id = ?', (app_id,))
@@ -449,6 +458,113 @@ class GameDatabaseManager:
             except sqlite3.Error as e:
                 print(f"[Error] Failed to get database stats: {e}")
                 return {'total_appids': 0, 'installed_appids': 0, 'total_depots': 0, 'depots_with_keys': 0}
+    
+    def get_installed_games(self) -> List[Dict[str, str]]:
+        """
+        Get all installed games with their AppID and name.
+        
+        Returns:
+            List[Dict]: List of games with 'app_id' and 'game_name' keys
+        """
+        with self._lock:
+            try:
+                conn = self._get_connection()
+                cursor = conn.cursor()
+                
+                cursor.execute('''
+                    SELECT app_id, game_name 
+                    FROM appids 
+                    WHERE is_installed = 1 
+                    ORDER BY game_name ASC, app_id ASC
+                ''')
+                
+                results = cursor.fetchall()
+                conn.close()
+                
+                games = []
+                for app_id, game_name in results:
+                    games.append({
+                        'app_id': app_id,
+                        'game_name': game_name if game_name else f"AppID {app_id}"
+                    })
+                
+                return games
+                
+            except sqlite3.Error as e:
+                print(f"[Error] Failed to get installed games: {e}")
+                return []
+    
+    def update_game_name(self, app_id: str, game_name: str) -> bool:
+        """
+        Update the game name for an existing AppID.
+        
+        Args:
+            app_id (str): The Steam AppID
+            game_name (str): The name of the game
+            
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        with self._lock:
+            try:
+                conn = self._get_connection()
+                cursor = conn.cursor()
+                
+                cursor.execute('''
+                    UPDATE appids SET game_name = ?, last_updated = CURRENT_TIMESTAMP
+                    WHERE app_id = ?
+                ''', (game_name, app_id))
+                
+                conn.commit()
+                return True
+                
+            except sqlite3.Error as e:
+                print(f"[Error] Failed to update game name for AppID {app_id}: {e}")
+                return False
+            finally:
+                if 'conn' in locals():
+                    conn.close()
+    
+    def update_missing_game_names(self) -> int:
+        """
+        Update game names for AppIDs that don't have them yet.
+        This is useful for migrating existing databases.
+        
+        Returns:
+            int: Number of games updated
+        """
+        from steam_game_search import get_game_name_by_appid
+        
+        updated_count = 0
+        with self._lock:
+            try:
+                conn = self._get_connection()
+                cursor = conn.cursor()
+                
+                # Get all AppIDs without game names
+                cursor.execute('SELECT app_id FROM appids WHERE game_name IS NULL OR game_name = ""')
+                app_ids = [row[0] for row in cursor.fetchall()]
+                
+                for app_id in app_ids:
+                    try:
+                        game_name = get_game_name_by_appid(app_id)
+                        if game_name and game_name != f"AppID {app_id}":
+                            cursor.execute('''
+                                UPDATE appids SET game_name = ?, last_updated = CURRENT_TIMESTAMP
+                                WHERE app_id = ?
+                            ''', (game_name, app_id))
+                            updated_count += 1
+                            print(f"[INFO] Updated game name for AppID {app_id}: {game_name}")
+                    except Exception as e:
+                        print(f"[WARNING] Failed to update game name for AppID {app_id}: {e}")
+                
+                conn.commit()
+                conn.close()
+                
+            except sqlite3.Error as e:
+                print(f"[Error] Failed to update missing game names: {e}")
+        
+        return updated_count
     
     def close(self):
         """Close the database connection."""

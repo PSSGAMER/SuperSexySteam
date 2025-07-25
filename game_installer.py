@@ -12,6 +12,7 @@ from greenluma_manager import process_single_appid_for_greenluma, remove_appid_f
 from vdf_updater import add_depots_to_config_vdf, remove_depots_from_config_vdf
 from depot_cache_manager import copy_manifests_for_appid, remove_manifests_for_appid
 from acfgen import generate_acf_for_appid, remove_acf_for_appid
+from steam_game_search import get_game_name_by_appid
 
 
 class GameInstaller:
@@ -72,14 +73,18 @@ class GameInstaller:
             result['stats']['depots_processed'] = len(depots)
             print(f"[INFO] Found {len(depots)} depots in lua file")
             
-            # Step 2: Add to database
-            if not self.db.add_appid_with_depots(app_id, depots):
+            # Step 2: Fetch game name from Steam API
+            game_name = get_game_name_by_appid(app_id)
+            print(f"[INFO] Retrieved game name: {game_name}")
+            
+            # Step 3: Add to database with game name
+            if not self.db.add_appid_with_depots(app_id, depots, game_name):
                 result['errors'].append("Failed to add AppID and depots to database")
                 return result
             
-            print(f"[INFO] Added AppID {app_id} with {len(depots)} depots to database")
+            print(f"[INFO] Added AppID {app_id} ({game_name}) with {len(depots)} depots to database")
             
-            # Step 3: Update GreenLuma
+            # Step 4: Update GreenLuma
             greenluma_path = self.config.get('Paths', 'greenluma_path', fallback='')
             if greenluma_path and os.path.isdir(greenluma_path):
                 try:
@@ -94,7 +99,7 @@ class GameInstaller:
             else:
                 result['warnings'].append("Invalid GreenLuma path, skipping GreenLuma update")
             
-            # Step 4: Update config.vdf
+            # Step 5: Update config.vdf
             steam_path = self.config.get('Paths', 'steam_path', fallback='')
             if steam_path and os.path.isdir(steam_path):
                 try:
@@ -115,7 +120,7 @@ class GameInstaller:
             else:
                 result['warnings'].append("Invalid Steam path, skipping config.vdf update")
             
-            # Step 5: Copy manifest files to depot cache
+            # Step 6: Copy manifest files to depot cache
             if steam_path and os.path.isdir(steam_path):
                 try:
                     manifest_stats = copy_manifests_for_appid(steam_path, app_id, data_folder)
@@ -127,7 +132,7 @@ class GameInstaller:
                 except Exception as e:
                     result['warnings'].append(f"Depot cache update failed: {e}")
             
-            # Step 6: Generate ACF file
+            # Step 7: Generate ACF file
             if steam_path and os.path.isdir(steam_path):
                 try:
                     acf_success = generate_acf_for_appid(steam_path, app_id)

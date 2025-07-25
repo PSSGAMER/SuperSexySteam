@@ -372,6 +372,14 @@ class App(TkinterDnD.Tk):
         # Initialize database and game installer
         self.db = get_database_manager()
         self.game_installer = GameInstaller(config)
+        
+        # Update missing game names for existing databases (migration)
+        try:
+            updated_count = self.db.update_missing_game_names()
+            if updated_count > 0:
+                print(f"[INFO] Updated {updated_count} game names during database migration")
+        except Exception as e:
+            print(f"[WARNING] Failed to update missing game names: {e}")
 
         # --- Window Configuration ---
         # The root window is a standard Tk object, so it uses 'background' for its color.
@@ -477,6 +485,12 @@ class App(TkinterDnD.Tk):
                                           fg_color="#2196f3", hover_color="#1976d2", border_width=0,
                                           corner_radius=8, command=self.on_search_click, width=120)
         self.search_button.pack(side="left", padx=(0, 10))
+
+        # --- Installed Games Button ---
+        self.installed_games_button = ctk.CTkButton(self.secondary_buttons_frame, text="📋 Installed Games", font=Theme.FONT_PRIMARY, text_color=Theme.TEXT_PRIMARY,
+                                                   fg_color="#4caf50", hover_color="#388e3c", border_width=0,
+                                                   command=self.on_installed_games_click, width=130)
+        self.installed_games_button.pack(side="left", padx=(0, 10))
 
         # --- Status Label ---
         self.status_label = ctk.CTkLabel(self, text="Ready for action. Drop files to install games instantly!", font=Theme.FONT_PRIMARY,
@@ -961,6 +975,177 @@ class App(TkinterDnD.Tk):
             # Clean up the data folder
             if os.path.exists(destination_directory):
                 shutil.rmtree(destination_directory, ignore_errors=True)
+
+    def on_installed_games_click(self):
+        """
+        Handle the "Installed Games" button click.
+        Opens a new window showing all installed games with uninstall options.
+        """
+        self.open_installed_games_window()
+
+    def open_installed_games_window(self):
+        """
+        Open the Installed Games window showing all installed games.
+        """
+        # Create a new window for installed games
+        games_window = ctk.CTkToplevel(self)
+        games_window.title("Installed Games")
+        games_window.geometry("800x700")
+        games_window.configure(fg_color=Theme.BG_DARK)
+        
+        # Make the window stay on top
+        games_window.transient(self)
+        games_window.grab_set()
+        
+        # Try to set icon
+        try:
+            icon_path = os.path.join(os.path.dirname(__file__), "icon.ico")
+            if os.path.exists(icon_path):
+                games_window.wm_iconbitmap(icon_path)
+        except Exception:
+            pass
+        
+        # Title
+        title_label = ctk.CTkLabel(games_window, text="📋 Installed Games", 
+                                  font=("Segoe UI", 24, "bold"), text_color=Theme.GOLD)
+        title_label.pack(pady=(20, 10))
+        
+        # Status label for this window
+        status_games = ctk.CTkLabel(games_window, text="Loading installed games...", 
+                                   font=Theme.FONT_PRIMARY, text_color=Theme.TEXT_SECONDARY)
+        status_games.pack(pady=5)
+        
+        # Refresh button
+        refresh_frame = ctk.CTkFrame(games_window, fg_color="transparent")
+        refresh_frame.pack(pady=10)
+        
+        refresh_btn = ctk.CTkButton(refresh_frame, text="🔄 Refresh List", 
+                                   font=Theme.FONT_PRIMARY, text_color=Theme.BG_DARK,
+                                   fg_color=Theme.GOLD, hover_color=Theme.DARK_GOLD,
+                                   command=lambda: self.refresh_installed_games(games_frame, status_games))
+        refresh_btn.pack()
+        
+        # Games list frame with scrollbar
+        games_container = ctk.CTkFrame(games_window, fg_color=Theme.BG_LIGHT, corner_radius=10)
+        games_container.pack(padx=20, pady=10, fill="both", expand=True)
+        
+        # Scrollable frame for games
+        games_frame = ctk.CTkScrollableFrame(games_container, fg_color="transparent")
+        games_frame.pack(padx=10, pady=10, fill="both", expand=True)
+        
+        # Load the games initially
+        self.refresh_installed_games(games_frame, status_games)
+
+    def refresh_installed_games(self, games_frame, status_label):
+        """
+        Refresh the list of installed games in the window.
+        
+        Args:
+            games_frame: The scrollable frame to display games in
+            status_label: The status label to update with progress
+        """
+        # Clear previous games
+        for widget in games_frame.winfo_children():
+            widget.destroy()
+        
+        # Update status
+        status_label.configure(text="Loading installed games...", text_color=Theme.TEXT_SECONDARY)
+        games_frame.update_idletasks()
+        
+        try:
+            # Get installed games from database
+            games = self.db.get_installed_games()
+            
+            if not games:
+                status_label.configure(text="No games installed", text_color=Theme.STATUS_WARNING)
+                no_games_label = ctk.CTkLabel(games_frame, text="No games found. Install some games first!", 
+                                             font=Theme.FONT_PRIMARY, text_color=Theme.TEXT_SECONDARY)
+                no_games_label.pack(pady=30)
+                return
+            
+            # Update status with games count
+            status_label.configure(text=f"Found {len(games)} installed games", text_color=Theme.STATUS_SUCCESS)
+            
+            # Display games
+            for i, game in enumerate(games, 1):
+                # Create a frame for each game
+                game_frame = ctk.CTkFrame(games_frame, fg_color=Theme.BG_DARK, corner_radius=8)
+                game_frame.pack(fill="x", padx=5, pady=5)
+                
+                # Game info frame
+                info_frame = ctk.CTkFrame(game_frame, fg_color="transparent")
+                info_frame.pack(fill="x", padx=15, pady=15)
+                
+                # Top row: Game number and name
+                top_row = ctk.CTkFrame(info_frame, fg_color="transparent")
+                top_row.pack(fill="x")
+                
+                name_label = ctk.CTkLabel(top_row, text=f"{i}. {game['game_name']}", 
+                                         font=("Segoe UI", 16, "bold"), text_color=Theme.TEXT_PRIMARY, anchor="w")
+                name_label.pack(side="left", fill="x", expand=True)
+                
+                # Bottom row: AppID and uninstall button
+                bottom_row = ctk.CTkFrame(info_frame, fg_color="transparent")
+                bottom_row.pack(fill="x", pady=(10, 0))
+                
+                appid_label = ctk.CTkLabel(bottom_row, text=f"AppID: {game['app_id']}", 
+                                          font=Theme.FONT_PRIMARY, text_color=Theme.TEXT_SECONDARY, anchor="w")
+                appid_label.pack(side="left")
+                
+                # Uninstall button
+                uninstall_btn = ctk.CTkButton(bottom_row, text="🗑️ Uninstall", 
+                                             font=("Segoe UI", 12), width=100, height=30,
+                                             fg_color=Theme.STATUS_ERROR, hover_color="#d32f2f",
+                                             command=lambda aid=game['app_id'], name=game['game_name']: 
+                                             self.uninstall_game_from_list(aid, name, games_frame, status_label))
+                uninstall_btn.pack(side="right", padx=(10, 0))
+                
+        except Exception as e:
+            status_label.configure(text=f"Error loading games: {str(e)}", text_color=Theme.STATUS_ERROR)
+            print(f"[ERROR] Failed to load installed games: {e}")
+
+    def uninstall_game_from_list(self, app_id, game_name, games_frame, status_label):
+        """
+        Uninstall a specific game from the installed games list.
+        
+        Args:
+            app_id (str): The AppID of the game to uninstall
+            game_name (str): The name of the game
+            games_frame: The games frame to refresh after uninstallation
+            status_label: The status label to update with progress
+        """
+        # Show confirmation dialog
+        from tkinter import messagebox
+        
+        result = messagebox.askyesno(
+            "Confirm Uninstall", 
+            f"Are you sure you want to uninstall '{game_name}' (AppID: {app_id})?\n\n"
+            "This will remove all related files and data.",
+            icon="warning"
+        )
+        
+        if not result:
+            return
+        
+        status_label.configure(text=f"Uninstalling {game_name}...", text_color=Theme.STATUS_WARNING)
+        
+        try:
+            # Use the existing uninstall logic
+            result = uninstall_specific_appid(self.config, app_id, verbose=True)
+            
+            if result['success']:
+                status_label.configure(text=f"Successfully uninstalled {game_name}", text_color=Theme.STATUS_SUCCESS)
+                # Refresh the main app database stats
+                self.update_database_stats()
+                # Refresh the games list
+                self.refresh_installed_games(games_frame, status_label)
+            else:
+                error_msg = '; '.join(result['errors'])
+                status_label.configure(text=f"Failed to uninstall {game_name}: {error_msg}", text_color=Theme.STATUS_ERROR)
+                
+        except Exception as e:
+            status_label.configure(text=f"Error uninstalling {game_name}: {e}", text_color=Theme.STATUS_ERROR)
+            print(f"[ERROR] Failed to uninstall {game_name} (AppID {app_id}): {e}")
 
 
 # =============================================================================
