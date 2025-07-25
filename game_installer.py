@@ -63,11 +63,12 @@ class GameInstaller:
                 result['errors'].append(f"Lua file not found: {lua_file}")
                 return result
             
-            depots = parse_lua_for_all_depots(lua_file)
-            if not depots:
+            lua_result = parse_lua_for_all_depots(lua_file)
+            if not lua_result or not lua_result.get('depots'):
                 result['errors'].append(f"No depots found in lua file: {lua_file}")
                 return result
             
+            depots = lua_result['depots']
             result['stats']['depots_processed'] = len(depots)
             print(f"[INFO] Found {len(depots)} depots in lua file")
             
