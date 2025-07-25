@@ -35,6 +35,7 @@ import subprocess
 from greenluma_manager import configure_greenluma_injector
 from database_manager import get_database_manager
 from game_installer import GameInstaller
+from system_cleaner import clear_all_data, uninstall_specific_appid
 
 
 # =============================================================================
@@ -307,17 +308,17 @@ class App(TkinterDnD.Tk):
                                            corner_radius=8, command=self.update_database_stats, width=120)
         self.refresh_button.pack(side="left", padx=(0, 10))
 
-        # --- Clear Database Button ---
-        self.clear_db_button = ctk.CTkButton(self.buttons_frame, text="Clear Database", font=Theme.FONT_PRIMARY, text_color=Theme.TEXT_PRIMARY,
-                                            fg_color=Theme.STATUS_WARNING, hover_color="#ff9800", border_width=0,
-                                            corner_radius=8, command=self.on_clear_database_click, width=120)
-        self.clear_db_button.pack(side="left", padx=(0, 10))
+        # --- Clear Data Button ---
+        self.clear_data_button = ctk.CTkButton(self.buttons_frame, text="Clear Data", font=Theme.FONT_PRIMARY, text_color=Theme.TEXT_PRIMARY,
+                                              fg_color=Theme.STATUS_ERROR, hover_color="#c62828", border_width=0,
+                                              corner_radius=8, command=self.on_clear_data_click, width=120)
+        self.clear_data_button.pack(side="left", padx=(0, 10))
 
-        # --- Clear Data Button (small, positioned in top-right) ---
-        self.clear_button = ctk.CTkButton(self, text="Clear Data", font=("Segoe UI", 10), text_color=Theme.TEXT_PRIMARY,
-                                          fg_color=Theme.STATUS_ERROR, hover_color="#c62828", border_width=0,
-                                          corner_radius=5, command=self.on_clear_data_click, width=80, height=25)
-        self.clear_button.place(relx=0.98, rely=0.02, anchor="ne")
+        # --- Uninstall Button ---
+        self.uninstall_button = ctk.CTkButton(self.buttons_frame, text="Uninstall AppID", font=Theme.FONT_PRIMARY, text_color=Theme.TEXT_PRIMARY,
+                                             fg_color=Theme.STATUS_WARNING, hover_color="#ff9800", border_width=0,
+                                             corner_radius=8, command=self.on_uninstall_click, width=120)
+        self.uninstall_button.pack(side="left", padx=(0, 10))
 
         # --- Status Label ---
         self.status_label = ctk.CTkLabel(self, text="Ready for action. Drop files to install games instantly!", font=Theme.FONT_PRIMARY,
@@ -358,71 +359,108 @@ class App(TkinterDnD.Tk):
             self.stats_label.configure(text="Error loading database statistics")
             print(f"[ERROR] Failed to update database stats: {e}")
 
-    def on_clear_database_click(self):
-        """
-        Clear all entries from the database and reset the application.
-        """
-        self.update_status("Clearing database...", "warning")
-        
-        try:
-            # Get all installed AppIDs for cleanup
-            installed_appids = self.db.get_all_installed_appids()
-            
-            if installed_appids:
-                self.update_status(f"Uninstalling {len(installed_appids)} games...", "warning")
-                
-                # Uninstall all games
-                for app_id in installed_appids:
-                    try:
-                        self.update_status(f"Uninstalling AppID {app_id}...", "info")
-                        result = self.game_installer.uninstall_game(app_id)
-                        if not result['success']:
-                            print(f"[WARNING] Failed to fully uninstall AppID {app_id}: {result['errors']}")
-                    except Exception as e:
-                        print(f"[ERROR] Error uninstalling AppID {app_id}: {e}")
-                
-                self.update_status(f"Database cleared. {len(installed_appids)} games uninstalled.", "success")
-            else:
-                self.update_status("Database was already empty.", "info")
-            
-            # Update stats display
-            self.update_database_stats()
-            
-        except Exception as e:
-            self.update_status(f"Error clearing database: {e}", "error")
-            print(f"[ERROR] Failed to clear database: {e}")
-
     def on_clear_data_click(self):
         """
-        Handles the "Clear Data" button click.
-        
-        Deletes the config.ini and database files to reset the application
-        to its initial state, then terminates the script.
+        Comprehensive data clearing that removes all SuperSexySteam data from the system.
+        This includes database, data folder, depot keys, depot cache files, ACF files, and GreenLuma entries.
         """
-        self.update_status("Clearing all data and resetting application...", "warning")
+        self.update_status("Starting comprehensive data cleanup...", "warning")
         
-        files_to_delete = ['config.ini', 'supersexyssteam.db']
-        deleted_files = []
+        try:
+            result = clear_all_data(self.config, verbose=True)
+            
+            if result['success']:
+                stats = result['stats']
+                summary_parts = []
+                
+                if stats['database_cleared']:
+                    summary_parts.append("database")
+                if stats['data_folder_cleared']:
+                    summary_parts.append("data folder")
+                if stats['depot_keys_removed'] > 0:
+                    summary_parts.append(f"{stats['depot_keys_removed']} depot keys")
+                if stats['depotcache_files_removed'] > 0:
+                    summary_parts.append(f"{stats['depotcache_files_removed']} manifest files")
+                if stats['acf_files_removed'] > 0:
+                    summary_parts.append(f"{stats['acf_files_removed']} ACF files")
+                if stats['greenluma_files_removed'] > 0:
+                    summary_parts.append(f"{stats['greenluma_files_removed']} GreenLuma entries")
+                
+                summary = f"Cleared: {', '.join(summary_parts) if summary_parts else 'no data found'}"
+                self.update_status(f"Data cleanup completed! {summary}", "success")
+                
+                if result['warnings']:
+                    for warning in result['warnings']:
+                        print(f"[WARNING] {warning}")
+                
+                # Update stats display
+                self.update_database_stats()
+                
+            else:
+                error_msg = '; '.join(result['errors'])
+                self.update_status(f"Data cleanup failed: {error_msg}", "error")
+                
+        except Exception as e:
+            self.update_status(f"Error during data cleanup: {e}", "error")
+            print(f"[ERROR] Failed to clear data: {e}")
+
+    def on_uninstall_click(self):
+        """
+        Shows a dialog to get AppID input and uninstalls the specified game.
+        """
+        # Create input dialog
+        dialog = ctk.CTkInputDialog(text="Enter AppID to uninstall:", title="Uninstall Game")
+        app_id = dialog.get_input()
         
-        for file_path in files_to_delete:
-            if os.path.exists(file_path):
-                try:
-                    os.remove(file_path)
-                    deleted_files.append(file_path)
-                    print(f"[INFO] Deleted {file_path}")
-                except Exception as e:
-                    print(f"[Error] Failed to delete {file_path}: {e}")
-                    self.update_status(f"Error deleting {file_path}: {e}", "error")
-                    return
+        if app_id is None or app_id.strip() == "":
+            return  # User cancelled or entered empty string
+            
+        app_id = app_id.strip()
         
-        if deleted_files:
-            print(f"[INFO] Successfully deleted: {', '.join(deleted_files)}")
-        else:
-            print("[INFO] No config files found to delete.")
+        # Validate AppID is numeric
+        if not app_id.isdigit():
+            self.update_status(f"Invalid AppID: '{app_id}'. Must be numeric.", "error")
+            return
         
-        print("[INFO] Application data cleared. Terminating...")
-        self.destroy()
-        sys.exit(0)
+        self.update_status(f"Uninstalling AppID {app_id}...", "warning")
+        
+        try:
+            result = uninstall_specific_appid(self.config, app_id, verbose=True)
+            
+            if result['success']:
+                stats = result['stats']
+                summary_parts = []
+                
+                if stats['database_entry_removed']:
+                    summary_parts.append("database entry")
+                if stats['data_folder_removed']:
+                    summary_parts.append("data folder")
+                if stats['depot_keys_removed'] > 0:
+                    summary_parts.append(f"{stats['depot_keys_removed']} depot keys")
+                if stats['manifest_files_removed'] > 0:
+                    summary_parts.append(f"{stats['manifest_files_removed']} manifest files")
+                if stats['acf_file_removed']:
+                    summary_parts.append("ACF file")
+                if stats['greenluma_files_removed'] > 0:
+                    summary_parts.append(f"{stats['greenluma_files_removed']} GreenLuma entries")
+                
+                summary = f"Removed: {', '.join(summary_parts) if summary_parts else 'no components found'}"
+                self.update_status(f"AppID {app_id} uninstalled! {summary}", "success")
+                
+                if result['warnings']:
+                    for warning in result['warnings']:
+                        print(f"[WARNING] {warning}")
+                
+                # Update stats display
+                self.update_database_stats()
+                
+            else:
+                error_msg = '; '.join(result['errors'])
+                self.update_status(f"Uninstallation failed: {error_msg}", "error")
+                
+        except Exception as e:
+            self.update_status(f"Error during uninstallation: {e}", "error")
+            print(f"[ERROR] Failed to uninstall AppID {app_id}: {e}")
 
     def update_status(self, message: str, level: str = "info"):
         """Provides colored feedback to the user via the status label at the bottom."""

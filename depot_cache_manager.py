@@ -180,6 +180,51 @@ def get_depot_cache_info(steam_path: str) -> Dict[str, any]:
     return info
 
 
+def clear_all_depot_cache(steam_path: str) -> Dict[str, int]:
+    """
+    Clear all manifest files from Steam depot cache.
+    
+    Args:
+        steam_path (str): Path to Steam installation directory
+        
+    Returns:
+        Dict[str, int]: Statistics with 'removed_count'
+    """
+    stats = {'removed_count': 0}
+    
+    try:
+        # Construct depot cache path
+        depot_cache_path = os.path.join(steam_path, 'depotcache')
+        if not os.path.exists(depot_cache_path):
+            print(f"[INFO] Depot cache directory does not exist: {depot_cache_path}")
+            return stats
+        
+        # Find all manifest files in depot cache
+        manifest_pattern = os.path.join(depot_cache_path, "*.manifest")
+        manifest_files = glob.glob(manifest_pattern)
+        
+        if not manifest_files:
+            print(f"[INFO] No manifest files found in depot cache")
+            return stats
+        
+        # Remove all manifest files
+        for manifest_file in manifest_files:
+            try:
+                filename = os.path.basename(manifest_file)
+                os.remove(manifest_file)
+                stats['removed_count'] += 1
+                print(f"[INFO] Removed manifest: {filename}")
+            except Exception as e:
+                print(f"[ERROR] Failed to remove manifest {os.path.basename(manifest_file)}: {e}")
+        
+        print(f"[INFO] Depot cache cleanup complete: {stats['removed_count']} files removed")
+        
+    except Exception as e:
+        print(f"[ERROR] Failed to clear depot cache: {e}")
+    
+    return stats
+
+
 if __name__ == "__main__":
     # Test the depot cache manager
     print("Depot cache manager module loaded successfully!")

@@ -11,6 +11,7 @@ import time
 import traceback
 from pathlib import Path
 from steam.client import SteamClient
+from typing import List, Dict
 
 class ManifestGenerator:
     """
@@ -333,6 +334,45 @@ def remove_acf_for_appid(steam_path: str, app_id: str) -> bool:
     except Exception as e:
         print(f"[Error] Unexpected error removing ACF for AppID {app_id}: {e}")
         return False
+
+
+def remove_all_tracked_acf_files(steam_path: str, tracked_appids: List[str]) -> Dict[str, int]:
+    """
+    Remove ACF files for all tracked AppIDs.
+    
+    Args:
+        steam_path (str): Path to Steam installation directory
+        tracked_appids (List[str]): List of AppIDs to remove ACF files for
+        
+    Returns:
+        Dict[str, int]: Statistics with 'removed_count'
+    """
+    stats = {'removed_count': 0}
+    
+    try:
+        steamapps_path = Path(steam_path) / 'steamapps'
+        if not steamapps_path.is_dir():
+            print(f"[Error] The 'steamapps' directory could not be found at: {steamapps_path}")
+            return stats
+        
+        for app_id in tracked_appids:
+            acf_pattern = f"appmanifest_{app_id}.acf"
+            acf_path = steamapps_path / acf_pattern
+            
+            if acf_path.exists():
+                try:
+                    acf_path.unlink()
+                    stats['removed_count'] += 1
+                    print(f"[INFO] Removed ACF file: {acf_pattern}")
+                except Exception as e:
+                    print(f"[Error] Failed to remove ACF file {acf_pattern}: {e}")
+        
+        print(f"[INFO] ACF cleanup complete: {stats['removed_count']} files removed")
+            
+    except Exception as e:
+        print(f"[Error] Unexpected error removing ACF files: {e}")
+    
+    return stats
 
 
 if __name__ == "__main__":
