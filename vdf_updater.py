@@ -11,6 +11,48 @@ import vdf
 
 
 # =============================================================================
+# --- VDF HELPER FUNCTION ---
+# =============================================================================
+
+def _get_steam_node(config, verbose=True):
+    """
+    Navigates through a loaded VDF dictionary to safely find the 'Steam' node.
+
+    This helper centralizes the logic for accessing the nested key structure
+    and handles case-insensitivity for 'Valve' and 'Steam' keys.
+
+    Args:
+        config (dict): The loaded VDF configuration dictionary.
+        verbose (bool): Whether to print error/warning messages.
+
+    Returns:
+        dict or None: The 'Steam' node dictionary if found, otherwise None.
+    """
+
+    # Navigate through the VDF structure: InstallConfigStore → Software → Valve → Steam
+    if 'InstallConfigStore' not in config:
+        if verbose:
+            print("[Error] 'InstallConfigStore' section not found in config.vdf")
+        return None
+
+    software = config['InstallConfigStore'].get('Software', {})
+
+    valve = software.get('Valve') or software.get('valve')
+    if not valve:
+        if verbose:
+            print("[Warning] 'Valve' section not found in config.vdf")
+        return None
+
+    steam = valve.get('Steam') or valve.get('steam')
+    if not steam:
+        if verbose:
+            print("[Warning] 'Steam' section not found in config.vdf")
+        return None
+
+    return steam
+
+
+# =============================================================================
 # --- VDF UPDATE FUNCTIONS ---
 # =============================================================================
 
@@ -50,26 +92,9 @@ def update_config_vdf(config_path, depot_keys, create_backup=True, verbose=True)
         with open(config_path, 'r', encoding='utf-8') as f:
             config = vdf.load(f)
 
-        # Navigate through the VDF structure: InstallConfigStore → Software → Valve → Steam
-        if 'InstallConfigStore' not in config:
-            if verbose:
-                print("[Error] InstallConfigStore section not found in config.vdf")
-            return False
-            
-        software = config['InstallConfigStore']['Software']
-        
-        # Handle case-insensitive keys for Valve
-        valve = software.get('Valve') or software.get('valve')
-        if not valve:
-            if verbose:
-                print("[Error] Valve section not found in config.vdf")
-            return False
-            
-        # Handle case-insensitive keys for Steam
-        steam = valve.get('Steam') or valve.get('steam')
+        # Get the Steam node using the helper function
+        steam = _get_steam_node(config, verbose)
         if not steam:
-            if verbose:
-                print("[Error] Steam section not found in config.vdf")
             return False
 
         if verbose:
@@ -128,23 +153,9 @@ def validate_config_vdf(config_path, verbose=True):
         with open(config_path, 'r', encoding='utf-8') as f:
             config = vdf.load(f)
 
-        # Check for required structure
-        if 'InstallConfigStore' not in config:
-            if verbose:
-                print("[Error] InstallConfigStore section not found")
-            return False
-            
-        software = config['InstallConfigStore']['Software']
-        valve = software.get('Valve') or software.get('valve')
-        if not valve:
-            if verbose:
-                print("[Error] Valve section not found")
-            return False
-            
-        steam = valve.get('Steam') or valve.get('steam')
+        # Check for required structure using the helper
+        steam = _get_steam_node(config, verbose)
         if not steam:
-            if verbose:
-                print("[Error] Steam section not found")
             return False
 
         if verbose:
@@ -176,9 +187,10 @@ def get_existing_depot_keys(config_path, verbose=True):
         with open(config_path, 'r', encoding='utf-8') as f:
             config = vdf.load(f)
 
-        software = config['InstallConfigStore']['Software']
-        valve = software.get('Valve') or software.get('valve')
-        steam = valve.get('Steam') or valve.get('steam')
+        steam = _get_steam_node(config, verbose=False) # No need for verbose output here
+        if not steam:
+            return existing_keys
+
         depots = steam.get('depots', {})
         
         for depot_id, depot_data in depots.items():
@@ -275,27 +287,10 @@ def remove_depots_from_config_vdf(config_path, depots, create_backup=True, verbo
         with open(config_path, 'r', encoding='utf-8') as f:
             config = vdf.load(f)
 
-        # Navigate through the VDF structure
-        if 'InstallConfigStore' not in config:
-            if verbose:
-                print("[Error] InstallConfigStore section not found in config.vdf")
-            return False
-            
-        software = config['InstallConfigStore']['Software']
-        
-        # Handle case-insensitive keys for Valve
-        valve = software.get('Valve') or software.get('valve')
-        if not valve:
-            if verbose:
-                print("[Warning] Valve section not found in config.vdf")
-            return True  # Nothing to remove
-            
-        # Handle case-insensitive keys for Steam
-        steam = valve.get('Steam') or valve.get('steam')
+        # Navigate through the VDF structure using the helper
+        steam = _get_steam_node(config, verbose)
         if not steam:
-            if verbose:
-                print("[Warning] Steam section not found in config.vdf")
-            return True  # Nothing to remove
+            return True # Nothing to remove is considered success
 
         # Check if depots section exists
         if 'depots' not in steam:
@@ -305,9 +300,10 @@ def remove_depots_from_config_vdf(config_path, depots, create_backup=True, verbo
 
         # Remove depot keys
         removed_count = 0
-        for depot in depots:
-            depot_id = depot['depot_id']
-            if depot_id in steam['depots']:
+        depot_ids_to_remove = {depot['depot_id'] for depot in depots}
+
+        for depot_id in list(steam['depots'].keys()): # Iterate over a copy of keys
+            if depot_id in depot_ids_to_remove:
                 del steam['depots'][depot_id]
                 removed_count += 1
                 if verbose:
