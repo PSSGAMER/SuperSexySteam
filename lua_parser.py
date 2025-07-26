@@ -13,6 +13,145 @@ import sys
 # --- LUA PARSING FUNCTIONS ---
 # =============================================================================
 
+def preprocess_lua_line(line):
+    """
+    Preprocesses a Lua line by removing comments and normalizing whitespace.
+    
+    Args:
+        line (str): Raw line from Lua file
+        
+    Returns:
+        str: Cleaned line with comments removed and whitespace normalized
+    """
+    # Remove inline comments (everything after --)
+    # Handle string literals that might contain -- by doing basic parsing
+    in_string = False
+    quote_char = None
+    i = 0
+    
+    while i < len(line) - 1:
+        char = line[i]
+        
+        # Track string boundaries
+        if not in_string and char in ['"', "'"]:
+            in_string = True
+            quote_char = char
+        elif in_string and char == quote_char:
+            # Check if it's escaped
+            if i > 0 and line[i-1] != '\\':
+                in_string = False
+                quote_char = None
+        
+        # Look for comment start outside of strings
+        elif not in_string and char == '-' and line[i+1] == '-':
+            line = line[:i]
+            break
+            
+        i += 1
+    
+    # Normalize whitespace
+    return line.strip()
+
+
+def extract_function_calls(line, function_name):
+    """
+    Extracts function call arguments from a preprocessed Lua line.
+    More robust than regex for handling various formatting styles.
+    
+    Args:
+        line (str): Preprocessed Lua line
+        function_name (str): Name of function to match (e.g., 'adddepot', 'addappid')
+        
+    Returns:
+        list or None: List of arguments if function call found, None otherwise
+    """
+    # Check if line starts with the function name
+    if not line.startswith(function_name + '('):
+        return None
+    
+    # Find the opening and closing parentheses
+    start_paren = line.find('(')
+    if start_paren == -1:
+        return None
+    
+    # Find matching closing parenthesis
+    paren_count = 0
+    end_paren = -1
+    in_string = False
+    quote_char = None
+    
+    for i in range(start_paren, len(line)):
+        char = line[i]
+        
+        # Track string boundaries
+        if not in_string and char in ['"', "'"]:
+            in_string = True
+            quote_char = char
+        elif in_string and char == quote_char:
+            # Check if it's escaped
+            if i > 0 and line[i-1] != '\\':
+                in_string = False
+                quote_char = None
+        
+        # Count parentheses outside of strings
+        elif not in_string:
+            if char == '(':
+                paren_count += 1
+            elif char == ')':
+                paren_count -= 1
+                if paren_count == 0:
+                    end_paren = i
+                    break
+    
+    if end_paren == -1:
+        return None
+    
+    # Extract arguments string
+    args_str = line[start_paren + 1:end_paren].strip()
+    if not args_str:
+        return []
+    
+    # Parse arguments (simple comma splitting with string awareness)
+    args = []
+    current_arg = ""
+    in_string = False
+    quote_char = None
+    
+    for char in args_str:
+        if not in_string and char in ['"', "'"]:
+            in_string = True
+            quote_char = char
+            current_arg += char
+        elif in_string and char == quote_char:
+            in_string = False
+            quote_char = None
+            current_arg += char
+        elif not in_string and char == ',':
+            args.append(current_arg.strip())
+            current_arg = ""
+        else:
+            current_arg += char
+    
+    # Add the last argument
+    if current_arg.strip():
+        args.append(current_arg.strip())
+    
+    # Clean up arguments (remove quotes from strings, convert numbers)
+    cleaned_args = []
+    for arg in args:
+        arg = arg.strip()
+        if arg.startswith('"') and arg.endswith('"'):
+            cleaned_args.append(arg[1:-1])  # Remove quotes
+        elif arg.startswith("'") and arg.endswith("'"):
+            cleaned_args.append(arg[1:-1])  # Remove quotes
+        elif arg.isdigit():
+            cleaned_args.append(arg)  # Keep as string for consistency
+        else:
+            cleaned_args.append(arg)
+    
+    return cleaned_args
+
+
 def parse_lua_for_depots(lua_path):
     """
     Reads a given .lua file and extracts all DepotID that have a corresponding
@@ -32,34 +171,46 @@ def parse_lua_for_depots(lua_path):
     # Extract AppID from filename to exclude it from depot results
     app_id = lua_path.stem
     
-    # Multiple regex patterns to handle different Lua formats
-    patterns = [
-        # Pattern 1: adddepot with key: adddepot(12345, "HEXKEY")
-        re.compile(r'^\s*adddepot\((\d+),\s*"([a-zA-Z0-9]+)"\)'),
-        
-        # Pattern 2: addappid function calls: addappid(12345, 1, "HEXKEY")
-        re.compile(r'^\s*addappid\((\d+),\s*1,\s*"([a-zA-Z0-9]+)"\)'),
-    ]
-
     extracted_depots = []
     try:
         with lua_path.open('r', encoding='utf-8') as f:
-            for line in f:
-                # Try each pattern
-                for pattern in patterns:
-                    match = pattern.match(line)
-                    if match:
-                        depot_id = match.group(1)
-                        depot_key = match.group(2)
+            for line_num, raw_line in enumerate(f, 1):
+                try:
+                    # Preprocess the line
+                    line = preprocess_lua_line(raw_line)
+                    
+                    if not line:
+                        continue
+                    
+                    # Check for adddepot calls
+                    args = extract_function_calls(line, 'adddepot')
+                    if args and len(args) >= 2:
+                        depot_id, depot_key = args[0], args[1]
                         
-                        # Skip if this ID matches the AppID (from filename)
-                        # Only actual depot IDs with keys should be included
-                        if depot_id != app_id:
+                        # Validate depot_id is numeric and has a non-empty key
+                        if depot_id.isdigit() and depot_key.strip() and depot_id != app_id:
                             extracted_depots.append({
                                 'depot_id': depot_id,
                                 'depot_key': depot_key
                             })
-                        break  # Stop at first match for this line
+                            continue
+                    
+                    # Check for addappid calls with key
+                    args = extract_function_calls(line, 'addappid')
+                    if args and len(args) >= 3:
+                        depot_id, flag, depot_key = args[0], args[1], args[2]
+                        
+                        # Validate depot_id is numeric, flag is 1, and has a non-empty key
+                        if (depot_id.isdigit() and flag == '1' and 
+                            depot_key.strip() and depot_id != app_id):
+                            extracted_depots.append({
+                                'depot_id': depot_id,
+                                'depot_key': depot_key
+                            })
+                
+                except Exception as e:
+                    print(f"  [Warning] Error parsing line {line_num} in {lua_path.name}: {e}")
+                    continue
                         
     except FileNotFoundError:
         print(f"  [Warning] Could not find file during parsing: {lua_path}")
@@ -99,55 +250,60 @@ def parse_lua_for_all_depots(lua_path):
         print(f"  [Warning] Filename '{lua_path.name}' does not contain a valid numeric AppID")
         return result
 
-    # Multiple regex patterns to handle different Lua formats
-    patterns = [
-        # Pattern 1: adddepot with key: adddepot(12345, "KEY123")
-        (re.compile(r'^\s*adddepot\((\d+),\s*"([a-zA-Z0-9]+)"\)'), True),
-        
-        # Pattern 2: adddepot without key: adddepot(12345)
-        (re.compile(r'^\s*adddepot\((\d+)\)'), False),
-        
-        # Pattern 3: addappid with key: addappid(12345, 1, "KEY123")
-        (re.compile(r'^\s*addappid\((\d+),\s*1,\s*"([a-zA-Z0-9]+)"\)'), True),
-        
-        # Pattern 4: addappid without key: addappid(12345, ...)
-        (re.compile(r'^\s*addappid\((\d+),?\s*[^,\)]*\)'), False),
-    ]
-
     extracted_depots = []
     try:
         with lua_path.open('r', encoding='utf-8') as f:
-            for line in f:
-                # Ignore comment lines to avoid parsing them.
-                if line.strip().startswith('--'):
-                    continue
-
-                # Try each pattern
-                for pattern, has_key in patterns:
-                    match = pattern.match(line)
-                    if match:
-                        depot_id = match.group(1)
+            for line_num, raw_line in enumerate(f, 1):
+                try:
+                    # Preprocess the line
+                    line = preprocess_lua_line(raw_line)
+                    
+                    if not line:
+                        continue
+                    
+                    depot_data = None
+                    
+                    # Check for adddepot calls
+                    args = extract_function_calls(line, 'adddepot')
+                    if args and len(args) >= 1:
+                        depot_id = args[0]
                         
                         # Skip if this ID matches the AppID (from filename)
-                        # Only actual depot IDs should be included
-                        if depot_id == app_id:
-                            continue
-                        
+                        if depot_id.isdigit() and depot_id != app_id:
+                            depot_data = {'depot_id': depot_id}
+                            if len(args) >= 2 and args[1].strip():
+                                depot_data['depot_key'] = args[1]
+                    
+                    # Check for addappid calls
+                    if not depot_data:
+                        args = extract_function_calls(line, 'addappid')
+                        if args and len(args) >= 1:
+                            depot_id = args[0]
+                            
+                            # Skip if this ID matches the AppID (from filename)
+                            if depot_id.isdigit() and depot_id != app_id:
+                                depot_data = {'depot_id': depot_id}
+                                # Check if it has a key (usually 3rd argument when flag is 1)
+                                if (len(args) >= 3 and args[1] == '1' and args[2].strip()):
+                                    depot_data['depot_key'] = args[2]
+                    
+                    # Add or update depot data
+                    if depot_data:
                         # Check if we already have this depot
-                        existing_depot = next((d for d in extracted_depots if d['depot_id'] == depot_id), None)
+                        existing_depot = next((d for d in extracted_depots 
+                                             if d['depot_id'] == depot_data['depot_id']), None)
                         
                         if existing_depot:
-                            # If we already have this depot and this match has a key, update it
-                            if has_key and len(match.groups()) >= 2:
-                                existing_depot['depot_key'] = match.group(2)
+                            # Update with key if this entry has one and existing doesn't
+                            if 'depot_key' in depot_data and 'depot_key' not in existing_depot:
+                                existing_depot['depot_key'] = depot_data['depot_key']
                         else:
                             # Add new depot
-                            depot_data = {'depot_id': depot_id}
-                            if has_key and len(match.groups()) >= 2:
-                                depot_data['depot_key'] = match.group(2)
                             extracted_depots.append(depot_data)
-                        
-                        break  # Stop at first match for this line
+                
+                except Exception as e:
+                    print(f"  [Warning] Error parsing line {line_num} in {lua_path.name}: {e}")
+                    continue
     
     except FileNotFoundError:
         print(f"  [Warning] Could not find file during parsing: {lua_path}")
