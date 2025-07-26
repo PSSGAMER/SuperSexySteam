@@ -5,7 +5,7 @@
 # and all GreenLuma-related operations for SuperSexySteam.
 
 import os
-import re
+import configparser
 
 
 # =============================================================================
@@ -138,7 +138,7 @@ def get_greenluma_applist_stats(gl_path, verbose=True):
 def configure_greenluma_injector(steam_path, greenluma_path, verbose=True):
     """
     Configures the DLLInjector.ini file in the GreenLuma NormalMode directory
-    with the correct Steam executable path and GreenLuma DLL path.
+    with the correct Steam executable path and GreenLuma DLL path using configparser.
     
     Args:
         steam_path (str): The path to the Steam installation directory.
@@ -160,28 +160,28 @@ def configure_greenluma_injector(steam_path, greenluma_path, verbose=True):
         return False
     
     try:
-        # Construct the paths using proper path joining and normalization
-        steam_exe_path = os.path.join(steam_path, 'Steam.exe').replace('\\', '\\\\')
-        greenluma_dll_path = os.path.join(greenluma_path, 'NormalMode', 'GreenLuma_2025_x86.dll').replace('\\', '\\\\')
+        # Initialize the config parser. 
+        # allow_no_value=True helps handle INI files that might have keys without values.
+        config = configparser.ConfigParser(allow_no_value=True)
+        config.read(injector_ini_path)
         
-        # Read the current file content as text to preserve formatting and comments
-        with open(injector_ini_path, 'r', encoding='utf-8') as f:
-            content = f.read()
+        # Ensure the [DLLInjector] section exists
+        if 'DLLInjector' not in config:
+            config.add_section('DLLInjector')
+
+        # Construct the full paths required for the INI file
+        steam_exe_path = os.path.join(steam_path, 'Steam.exe')
+        greenluma_dll_path = os.path.join(greenluma_path, 'NormalMode', 'GreenLuma_2025_x86.dll')
         
-        # Replace the specific lines we need to modify using string replacement
-        # Update UseFullPathsFromIni
-        content = re.sub(r'^UseFullPathsFromIni\s*=\s*.*$', f'UseFullPathsFromIni = 1', content, flags=re.MULTILINE | re.IGNORECASE)
-        
-        # Update Exe path - point to Steam executable
-        content = re.sub(r'^Exe\s*=\s*.*$', f'Exe = {steam_exe_path}', content, flags=re.MULTILINE | re.IGNORECASE)
-        
-        # Update Dll path - point to GreenLuma DLL file  
-        content = re.sub(r'^Dll\s*=\s*.*$', f'Dll = {greenluma_dll_path}', content, flags=re.MULTILINE | re.IGNORECASE)
-        
-        # Write the updated content back to the file
-        with open(injector_ini_path, 'w', encoding='utf-8') as f:
-            f.write(content)
-        
+        # Set the values in the [DLLInjector] section
+        config.set('DLLInjector', 'UseFullPathsFromIni', '1')
+        config.set('DLLInjector', 'Exe', steam_exe_path)
+        config.set('DLLInjector', 'Dll', greenluma_dll_path)
+
+        # Write the updated configuration back to the file
+        with open(injector_ini_path, 'w', encoding='utf-8') as configfile:
+            config.write(configfile)
+            
         if verbose:
             print(f"  Successfully configured DLLInjector.ini")
             print(f"  Steam executable: {steam_exe_path}")
@@ -192,7 +192,7 @@ def configure_greenluma_injector(steam_path, greenluma_path, verbose=True):
         
     except Exception as e:
         if verbose:
-            print(f"[Error] Failed to write DLLInjector.ini: {e}")
+            print(f"[Error] Failed to write DLLInjector.ini using configparser: {e}")
         return False
 
 
