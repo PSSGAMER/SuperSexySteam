@@ -6,6 +6,7 @@
 
 import os
 import configparser
+from typing import Dict
 
 
 # =============================================================================
@@ -416,6 +417,74 @@ def process_single_appid_for_greenluma(gl_path, app_id, depots, verbose=True):
     return result
 
 
+def _renumber_applist_files(applist_dir: str, verbose: bool) -> Dict[str, any]:
+    """
+    Renumbers all .txt files in the AppList directory to be sequential (0, 1, 2...).
+    This is a critical cleanup step after removing files to prevent gaps in indices.
+
+    Args:
+        applist_dir (str): The path to the AppList directory.
+        verbose (bool): Whether to print progress information.
+
+    Returns:
+        A dictionary with 'success' status and a list of 'errors'.
+    """
+    result = {'success': False, 'errors': []}
+    
+    try:
+        # Step 1: Read all existing files and their contents into memory
+        files_to_keep = []
+        all_txt_files = []
+        try:
+            existing_files = os.listdir(applist_dir)
+            all_txt_files = [f for f in existing_files if f.endswith('.txt')]
+            
+            # Sort by original index to maintain order as much as possible
+            all_txt_files.sort(key=lambda x: int(os.path.splitext(x)[0]) if os.path.splitext(x)[0].isdigit() else 999999)
+            
+            for filename in all_txt_files:
+                filepath = os.path.join(applist_dir, filename)
+                try:
+                    with open(filepath, 'r', encoding='utf-8') as f:
+                        content = f.read().strip()
+                    if content:  # Only keep files that have content
+                        files_to_keep.append(content)
+                except Exception as e:
+                    if verbose:
+                        print(f"    [Warning] Could not read file {filename}, it will be skipped: {e}")
+        except Exception as e:
+            result['errors'].append(f"Failed to scan AppList for renumbering: {e}")
+            return result
+
+        # Step 2: Remove all original .txt files
+        for filename in all_txt_files:
+            try:
+                os.remove(os.path.join(applist_dir, filename))
+            except Exception as e:
+                result['errors'].append(f"Failed to remove {filename} during renumbering: {e}")
+                return result  # Abort if we can't clean up properly
+        
+        # Step 3: Write back the files with new, sequential names
+        for i, content in enumerate(files_to_keep):
+            new_filename = f"{i}.txt"
+            new_filepath = os.path.join(applist_dir, new_filename)
+            try:
+                with open(new_filepath, 'w', encoding='utf-8') as f:
+                    f.write(f"{content}\n")
+            except Exception as e:
+                result['errors'].append(f"Failed to write new file {new_filename}: {e}")
+        
+        if verbose and files_to_keep:
+            print(f"  Successfully renumbered {len(files_to_keep)} AppList files.")
+        
+        result['success'] = True
+        return result
+
+    except Exception as e:
+        result['errors'].append(f"Unexpected error during file renumbering: {e}")
+        return result
+
+
 def remove_appid_from_greenluma(gl_path, app_id, depots, verbose=True):
     """
     Remove a specific AppID and its depots from the GreenLuma AppList.
@@ -451,14 +520,9 @@ def remove_appid_from_greenluma(gl_path, app_id, depots, verbose=True):
         for depot in depots:
             ids_to_remove.add(depot['depot_id'])
         
-        # Read all existing files and identify which ones to remove
-        files_to_remove = []
-        remaining_files = []
-        
+        # Identify and remove files containing the specified IDs
         try:
-            existing_files = os.listdir(applist_dir)
-            txt_files = [f for f in existing_files if f.endswith('.txt')]
-            
+            txt_files = [f for f in os.listdir(applist_dir) if f.endswith('.txt')]
             for filename in txt_files:
                 filepath = os.path.join(applist_dir, filename)
                 try:
@@ -466,61 +530,29 @@ def remove_appid_from_greenluma(gl_path, app_id, depots, verbose=True):
                         content = f.read().strip()
                     
                     if content in ids_to_remove:
-                        files_to_remove.append((filename, filepath, content))
+                        os.remove(filepath)
+                        result['stats']['files_removed'] += 1
                         if content == app_id:
                             result['stats']['appids_removed'] += 1
                         else:
                             result['stats']['depots_removed'] += 1
-                    else:
-                        remaining_files.append((filename, filepath, content))
-                        
+                        if verbose:
+                            print(f"  - Removed {filename} (contained {content})")
                 except Exception as e:
                     if verbose:
-                        print(f"[Warning] Could not read file {filename}: {e}")
-                    # Keep files we can't read
-                    remaining_files.append((filename, filepath, ""))
-        
+                        print(f"[Warning] Could not process file {filename}: {e}")
         except Exception as e:
-            result['errors'].append(f"Failed to scan AppList directory: {e}")
+            result['errors'].append(f"Failed to scan and remove from AppList: {e}")
             return result
         
-        # Remove the identified files
-        for filename, filepath, content in files_to_remove:
-            try:
-                os.remove(filepath)
-                result['stats']['files_removed'] += 1
-                if verbose:
-                    print(f"  - Removed {filename} (contained {content})")
-            except Exception as e:
-                result['errors'].append(f"Failed to remove file {filename}: {e}")
+        # After removing files, renumber the entire directory to ensure it's sequential
+        if verbose:
+            print(f"  Renumbering remaining AppList files...")
+        renumber_result = _renumber_applist_files(applist_dir, verbose)
+        if not renumber_result['success']:
+            result['errors'].extend(renumber_result['errors'])
         
-        # Renumber remaining files to maintain sequential order (0, 1, 2, 3...)
-        if remaining_files:
-            # Sort by original index to maintain order
-            remaining_files.sort(key=lambda x: int(os.path.splitext(x[0])[0]) if os.path.splitext(x[0])[0].isdigit() else 999999)
-            
-            # Rename files to sequential indices
-            for i, (old_filename, old_filepath, content) in enumerate(remaining_files):
-                new_filename = f"{i}.txt"
-                new_filepath = os.path.join(applist_dir, new_filename)
-                
-                if old_filename != new_filename:
-                    try:
-                        # Create new file with correct name
-                        with open(new_filepath, 'w', encoding='utf-8') as f:
-                            f.write(f"{content}\n")
-                        
-                        # Remove old file if it's different
-                        if old_filepath != new_filepath:
-                            os.remove(old_filepath)
-                        
-                        if verbose:
-                            print(f"  - Renumbered {old_filename} -> {new_filename}")
-                            
-                    except Exception as e:
-                        result['errors'].append(f"Failed to renumber {old_filename} to {new_filename}: {e}")
-        
-        result['success'] = True
+        result['success'] = not result['errors']
         if verbose:
             stats = result['stats']
             print(f"  Successfully removed AppID {app_id}: {stats['appids_removed']} AppIDs, {stats['depots_removed']} depots ({stats['files_removed']} files removed)")
@@ -538,8 +570,7 @@ def remove_appid_from_greenluma(gl_path, app_id, depots, verbose=True):
 def remove_duplicate_ids_from_applist(gl_path, verbose=True):
     """
     Detects and removes duplicate IDs from the GreenLuma AppList folder.
-    Keeps the first occurrence of each ID and removes subsequent duplicates,
-    then renumbers all files sequentially.
+    Keeps the first occurrence of each ID, removes subsequent duplicates, then renumbers all files.
 
     Args:
         gl_path (str): The path to the main GreenLuma folder.
@@ -568,28 +599,16 @@ def remove_duplicate_ids_from_applist(gl_path, verbose=True):
         if not os.path.isdir(applist_dir):
             if verbose:
                 print(f"[Info] GreenLuma AppList directory not found: {applist_dir}")
-                print(f"[Info] This is normal for a fresh installation")
             result['success'] = True
             return result
 
-        # Read all files and track which IDs we've seen
-        seen_ids = {}  # {id: first_filename_that_had_it}
-        duplicate_files = []  # [(filename, filepath, id)]
-        valid_files = []  # [(filename, filepath, id)]
+        seen_ids = set()
         
         try:
-            existing_files = os.listdir(applist_dir)
-            txt_files = [f for f in existing_files if f.endswith('.txt')]
+            txt_files = [f for f in os.listdir(applist_dir) if f.endswith('.txt')]
             result['stats']['total_files_scanned'] = len(txt_files)
             
-            if verbose and txt_files:
-                print(f"  Scanning {len(txt_files)} AppList files...")
-            elif verbose:
-                print(f"  No .txt files found in AppList directory")
-                result['success'] = True
-                return result
-            
-            # Sort files by index to process in order
+            # Sort files by index to ensure "first" occurrence is kept correctly
             txt_files.sort(key=lambda x: int(os.path.splitext(x)[0]) if os.path.splitext(x)[0].isdigit() else 999999)
             
             for filename in txt_files:
@@ -600,88 +619,38 @@ def remove_duplicate_ids_from_applist(gl_path, verbose=True):
                     
                     if content.isdigit():
                         if content in seen_ids:
-                            # This is a duplicate
-                            duplicate_files.append((filename, filepath, content))
-                            if content not in result['duplicates']:
-                                result['duplicates'][content] = []
-                            result['duplicates'][content].append(filename)
-                            result['stats']['duplicates_found'] += 1
+                            # This is a duplicate, remove it
+                            os.remove(filepath)
+                            result['stats']['duplicates_removed'] += 1
                             if verbose:
-                                print(f"    DUPLICATE: {filename} contains {content} (first seen in {seen_ids[content]})")
+                                print(f"    REMOVED: {filename} (duplicate of ID {content})")
                         else:
                             # First time seeing this ID
-                            seen_ids[content] = filename
-                            valid_files.append((filename, filepath, content))
-                            if content not in result['duplicates']:
-                                result['duplicates'][content] = []
-                            result['duplicates'][content].append(filename)
-                    else:
-                        # Invalid content, treat as valid file but warn
-                        valid_files.append((filename, filepath, content))
-                        if verbose:
-                            print(f"    WARNING: {filename} contains non-numeric content: {content}")
-                        
+                            seen_ids.add(content)
                 except Exception as e:
                     if verbose:
-                        print(f"    ERROR: Could not read file {filename}: {e}")
-                    # Keep files we can't read
-                    valid_files.append((filename, filepath, ""))
+                        print(f"    ERROR: Could not read file {filename}, skipping: {e}")
         except Exception as e:
-            result['errors'].append(f"Failed to scan AppList directory: {e}")
+            result['errors'].append(f"Failed to scan and remove duplicates: {e}")
             return result
 
-        # Remove duplicate files
-        for filename, filepath, content in duplicate_files:
-            try:
-                os.remove(filepath)
-                result['stats']['duplicates_removed'] += 1
-                if verbose:
-                    print(f"    REMOVED: {filename} (duplicate of ID {content})")
-            except Exception as e:
-                result['errors'].append(f"Failed to remove duplicate file {filename}: {e}")
-
-        # Renumber remaining files to maintain sequential order (0, 1, 2, 3...)
-        if valid_files:
-            # Sort by original index to maintain order
-            valid_files.sort(key=lambda x: int(os.path.splitext(x[0])[0]) if os.path.splitext(x[0])[0].isdigit() else 999999)
-            
-            # Rename files to sequential indices
-            for i, (old_filename, old_filepath, content) in enumerate(valid_files):
-                new_filename = f"{i}.txt"
-                new_filepath = os.path.join(applist_dir, new_filename)
-                
-                if old_filename != new_filename:
-                    try:
-                        # Create new file with correct name
-                        with open(new_filepath, 'w', encoding='utf-8') as f:
-                            f.write(f"{content}\n")
-                        
-                        # Remove old file if it's different
-                        if old_filepath != new_filepath:
-                            os.remove(old_filepath)
-                        
-                        if verbose:
-                            print(f"    RENUMBERED: {old_filename} -> {new_filename}")
-                            
-                    except Exception as e:
-                        result['errors'].append(f"Failed to renumber {old_filename} to {new_filename}: {e}")
+        # If we removed any duplicates, renumber the entire directory
+        if result['stats']['duplicates_removed'] > 0:
+            if verbose:
+                print("    Renumbering remaining files...")
+            renumber_result = _renumber_applist_files(applist_dir, verbose)
+            if not renumber_result['success']:
+                result['errors'].extend(renumber_result['errors'])
         
-        result['stats']['files_after_cleanup'] = len(valid_files)
-        result['success'] = True
+        result['stats']['files_after_cleanup'] = len(seen_ids)
+        result['success'] = not result['errors']
         
         if verbose:
             stats = result['stats']
             print(f"\n  Duplicate cleanup completed:")
             print(f"    Files scanned: {stats['total_files_scanned']}")
-            print(f"    Duplicates found: {stats['duplicates_found']}")
             print(f"    Duplicates removed: {stats['duplicates_removed']}")
             print(f"    Files remaining: {stats['files_after_cleanup']}")
-            
-            if result['duplicates']:
-                print(f"\n  Duplicate summary:")
-                for app_id, filenames in result['duplicates'].items():
-                    if len(filenames) > 1:
-                        print(f"    ID {app_id}: found in {len(filenames)} files ({', '.join(filenames)})")
         
     except Exception as e:
         result['errors'].append(f"Unexpected error: {e}")
