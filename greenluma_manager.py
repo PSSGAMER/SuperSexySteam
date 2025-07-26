@@ -4,7 +4,7 @@
 # This module handles AppList management, DLL injector configuration,
 # and all GreenLuma-related operations for SuperSexySteam.
 
-import configparser
+import re
 from pathlib import Path
 from typing import Dict
 
@@ -137,7 +137,8 @@ def get_greenluma_applist_stats(gl_path, verbose=True):
 def configure_greenluma_injector(steam_path, greenluma_path, verbose=True):
     """
     Configures the DLLInjector.ini file in the GreenLuma NormalMode directory
-    with the correct Steam executable path and GreenLuma DLL path using configparser.
+    with the correct Steam executable path and GreenLuma DLL path using a robust
+    line-by-line replacement method to preserve file structure and comments. I couldn't get configparser to work with this file format, so we do it manually. Plz help
     
     Args:
         steam_path (str or Path): The path to the Steam installation directory.
@@ -162,27 +163,49 @@ def configure_greenluma_injector(steam_path, greenluma_path, verbose=True):
         return False
     
     try:
-        # Initialize the config parser. 
-        # allow_no_value=True helps handle INI files that might have keys without values.
-        config = configparser.ConfigParser(allow_no_value=True)
-        config.read(injector_ini_path)
-        
-        # Ensure the [DLLInjector] section exists
-        if 'DLLInjector' not in config:
-            config.add_section('DLLInjector')
-
-        # Construct the full paths required for the INI file
         steam_exe_path = steam_path / 'Steam.exe'
         greenluma_dll_path = greenluma_path / 'NormalMode' / 'GreenLuma_2025_x86.dll'
-        
-        # Set the values in the [DLLInjector] section (convert Path objects to strings for INI)
-        config.set('DLLInjector', 'UseFullPathsFromIni', '1')
-        config.set('DLLInjector', 'Exe', str(steam_exe_path))
-        config.set('DLLInjector', 'Dll', str(greenluma_dll_path))
 
-        # Write the updated configuration back to the file
-        with open(injector_ini_path, 'w', encoding='utf-8') as configfile:
-            config.write(configfile)
+        # Define the key-value pairs we want to set.
+        # The keys here must match the case in the INI file.
+        updates = {
+            "UseFullPathsFromIni": "1",
+            "Exe": str(steam_exe_path),
+            "Dll": str(greenluma_dll_path),
+        }
+
+        # Read all lines from the file
+        with open(injector_ini_path, 'r', encoding='utf-8') as f:
+            lines = f.readlines()
+
+        new_lines = []
+        updated_keys = set()
+
+        # Process each line
+        for line in lines:
+            stripped_line = line.strip()
+            
+            # Find which key, if any, this line corresponds to
+            key_to_update = None
+            for key in updates:
+                # Match "Key = Value" or "Key=Value", ignoring case for robustness
+                if re.match(rf'^\s*{re.escape(key)}\s*=', stripped_line, re.IGNORECASE):
+                    key_to_update = key
+                    break
+
+            if key_to_update:
+                # This is a line we need to change. Replace it.
+                # We use the key's original casing from our `updates` dict.
+                new_line = f'{key_to_update} = {updates[key_to_update]}\n'
+                new_lines.append(new_line)
+                updated_keys.add(key_to_update)
+            else:
+                # This line is not a target for update, so keep it as is.
+                new_lines.append(line)
+        
+        # Write the modified lines back to the file
+        with open(injector_ini_path, 'w', encoding='utf-8') as f:
+            f.writelines(new_lines)
             
         if verbose:
             print(f"  Successfully configured DLLInjector.ini")
@@ -194,7 +217,7 @@ def configure_greenluma_injector(steam_path, greenluma_path, verbose=True):
         
     except Exception as e:
         if verbose:
-            print(f"[Error] Failed to write DLLInjector.ini using configparser: {e}")
+            print(f"[Error] Failed to write DLLInjector.ini using manual replacement: {e}")
         return False
 
 
