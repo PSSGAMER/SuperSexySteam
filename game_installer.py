@@ -13,6 +13,8 @@ from vdf_updater import add_depots_to_config_vdf, remove_depots_from_config_vdf
 from depot_cache_manager import copy_manifests_for_appid, remove_manifests_for_appid
 from acfgen import generate_acf_for_appid, remove_acf_for_appid
 from steam_game_search import get_game_name_by_appid
+# Import the centralized uninstaller
+from system_cleaner import uninstall_specific_appid
 
 
 class GameInstaller:
@@ -171,103 +173,21 @@ class GameInstaller:
     
     def uninstall_game(self, app_id: str) -> Dict[str, any]:
         """
-        Uninstall a game by removing all its traces from the system.
+        Uninstall a game by calling the centralized uninstaller from system_cleaner.
+        This is used as the first step of an update process. It ensures all traces,
+        including the data folder, are removed before a new version is installed.
         
         Args:
             app_id (str): The Steam AppID to uninstall
             
         Returns:
-            Dict[str, any]: Result dictionary with success status, errors, and statistics
+            Dict[str, any]: Result dictionary from the system_cleaner
         """
-        result = {
-            'success': False,
-            'errors': [],
-            'warnings': [],
-            'stats': {
-                'depots_removed': 0,
-                'manifests_removed': 0,
-                'greenluma_updated': False,
-                'config_vdf_updated': False,
-                'acf_removed': False
-            }
-        }
-        
-        try:
-            print(f"[INFO] Starting uninstallation for AppID {app_id}")
-            
-            # Check if AppID exists in database
-            if not self.db.is_appid_exists(app_id):
-                result['errors'].append(f"AppID {app_id} not found in database")
-                return result
-            
-            # Get depot information before removal
-            depots = self.db.get_appid_depots(app_id)
-            result['stats']['depots_removed'] = len(depots)
-            
-            # Step 1: Remove from GreenLuma
-            if self.is_greenluma_path_valid:
-                try:
-                    greenluma_result = remove_appid_from_greenluma(str(self.greenluma_path), app_id, depots)
-                    if greenluma_result['success']:
-                        result['stats']['greenluma_updated'] = True
-                        print(f"[INFO] Removed AppID {app_id} from GreenLuma")
-                    else:
-                        result['warnings'].extend(greenluma_result.get('errors', []))
-                except Exception as e:
-                    result['warnings'].append(f"GreenLuma removal failed: {e}")
-            
-            # Step 2: Remove from config.vdf
-            if self.is_steam_path_valid:
-                try:
-                    config_vdf_path = self.steam_path / 'config' / 'config.vdf'
-                    depots_with_keys = [d for d in depots if 'depot_key' in d]
-                    if depots_with_keys:
-                        vdf_success = remove_depots_from_config_vdf(str(config_vdf_path), depots_with_keys)
-                        if vdf_success:
-                            result['stats']['config_vdf_updated'] = True
-                            print(f"[INFO] Removed {len(depots_with_keys)} depot keys from config.vdf")
-                        else:
-                            result['warnings'].append("Failed to update config.vdf")
-                except Exception as e:
-                    result['warnings'].append(f"Config.vdf update failed: {e}")
-            
-            # Step 3: Remove manifest files from depot cache
-            if self.is_steam_path_valid:
-                try:
-                    manifest_stats = remove_manifests_for_appid(str(self.steam_path), app_id)
-                    result['stats']['manifests_removed'] = manifest_stats.get('removed_count', 0)
-                    if manifest_stats.get('removed_count', 0) > 0:
-                        print(f"[INFO] Removed {manifest_stats['removed_count']} manifest files from depot cache")
-                except Exception as e:
-                    result['warnings'].append(f"Depot cache cleanup failed: {e}")
-            
-            # Step 4: Remove ACF file
-            if self.is_steam_path_valid:
-                try:
-                    acf_success = remove_acf_for_appid(str(self.steam_path), app_id)
-                    if acf_success:
-                        result['stats']['acf_removed'] = True
-                        print(f"[INFO] Removed ACF file for AppID {app_id}")
-                    else:
-                        result['warnings'].append("Failed to remove ACF file")
-                except Exception as e:
-                    result['warnings'].append(f"ACF removal failed: {e}")
-            
-            # Step 5: Remove from database (do this last)
-            if not self.db.remove_appid(app_id):
-                result['errors'].append("Failed to remove AppID from database")
-                return result
-            
-            print(f"[INFO] Removed AppID {app_id} from database")
-            
-            result['success'] = True
-            print(f"[SUCCESS] Uninstallation completed for AppID {app_id}")
-            
-        except Exception as e:
-            result['errors'].append(f"Unexpected error during uninstallation: {e}")
-            print(f"[ERROR] Uninstallation failed for AppID {app_id}: {e}")
-        
-        return result
+        print(f"[INFO] Delegating uninstallation of AppID {app_id} to system_cleaner for update.")
+        # This unified function handles all aspects of uninstallation.
+        # remove_data_folder is True because an update implies replacing the old data.
+        # verbose is False to keep the console cleaner during the two-step update process.
+        return uninstall_specific_appid(self.config, app_id, verbose=False)
     
     def validate_installation(self, app_id: str) -> Dict[str, any]:
         """
@@ -442,20 +362,6 @@ def install_game_from_data_folder(config, app_id: str, data_folder: str) -> Dict
     installer = GameInstaller(config)
     return installer.install_game(app_id, data_folder)
 
-
-def uninstall_game_by_appid(config, app_id: str) -> Dict[str, any]:
-    """
-    Convenience function to uninstall a game by AppID.
-    
-    Args:
-        config: Application configuration  
-        app_id (str): Steam AppID
-        
-    Returns:
-        Dict[str, any]: Uninstallation result
-    """
-    installer = GameInstaller(config)
-    return installer.uninstall_game(app_id)
 
 
 if __name__ == "__main__":

@@ -800,27 +800,21 @@ class App(TkinterDnD.Tk):
             try:
                 uninstall_result = self.game_installer.uninstall_game(app_id)
                 if uninstall_result['success']:
-                    print(f"[INFO] Successfully uninstalled existing AppID {app_id}")
-                    stats = uninstall_result['stats']
-                    self.update_status(f"Uninstalled AppID {app_id} ({stats['depots_removed']} depots removed)", "success")
+                    print(f"[INFO] Successfully uninstalled existing AppID {app_id} for update.")
+                    # Use a less verbose message for the update process
+                    self.update_status(f"Old version of AppID {app_id} removed. Proceeding with install.", "success")
                 else:
-                    self.update_status(f"Warning: Uninstallation had issues: {uninstall_result['errors']}", "warning")
+                    # Allow continuing but show a warning. The old data might be partially removed.
+                    self.update_status(f"Warning: Uninstall had issues: {'; '.join(uninstall_result['errors'])}", "warning")
                     print(f"[WARNING] Uninstall errors for AppID {app_id}: {uninstall_result['errors']}")
             except Exception as e:
-                self.update_status(f"Error during uninstallation: {e}", "error")
+                self.update_status(f"Error during uninstallation step: {e}", "error")
                 print(f"[ERROR] Failed to uninstall AppID {app_id}: {e}")
                 return
         else:
             self.update_status(f"Installing new AppID {app_id}...", "info")
 
-        # If a folder already exists, remove it to ensure a clean slate.
-        if destination_directory.is_dir():
-            try:
-                shutil.rmtree(destination_directory)
-            except OSError as e:
-                self.update_status(f"Error removing old folder: {e}", "error")
-                return
-
+    
         destination_directory.mkdir(parents=True, exist_ok=True)
 
         # Copy all valid files to the destination.
@@ -856,7 +850,7 @@ class App(TkinterDnD.Tk):
                 
             else:
                 # Installation failed, clean up
-                self.update_status(f"Installation failed for AppID {app_id}: {install_result['errors']}", "error")
+                self.update_status(f"Installation failed for AppID {app_id}: {'; '.join(install_result['errors'])}", "error")
                 for error in install_result['errors']:
                     print(f"[ERROR] {error}")
                 
