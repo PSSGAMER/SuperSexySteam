@@ -73,24 +73,20 @@ def copy_manifests_for_appid(steam_path: str, app_id: str, data_folder: str) -> 
     return stats
 
 
-def remove_manifests_for_appid(steam_path: str, app_id: str) -> Dict[str, int]:
+def remove_manifests_for_appid(steam_path: str, manifest_filenames: List[str]) -> Dict[str, int]:
     """
-    Remove manifest files for a specific AppID from Steam depot cache.
-    Note: This is a basic implementation that removes all .manifest files.
-    In a more advanced implementation, you might want to track which specific
-    manifest files belong to which AppID.
-    
+    Remove specific manifest files from Steam depot cache based on a provided list of filenames.
+
     Args:
-        steam_path (str): Path to Steam installation directory
-        app_id (str): The Steam AppID
+        steam_path (str): Path to Steam installation directory.
+        manifest_filenames (List[str]): A list of manifest filenames to remove.
         
     Returns:
-        Dict[str, int]: Statistics with 'removed_count'
+        Dict[str, int]: Statistics with 'removed_count'.
     """
     stats = {'removed_count': 0}
     
     try:
-        # Convert to Path object
         steam_path_obj = Path(steam_path)
         
         # Construct depot cache path
@@ -99,42 +95,27 @@ def remove_manifests_for_appid(steam_path: str, app_id: str) -> Dict[str, int]:
             print(f"[INFO] Depot cache directory does not exist: {depot_cache_path}")
             return stats
         
-        # For now, we'll implement a simple approach:
-        # Remove all manifest files that were likely added for this AppID
-        # In a production system, you'd want to track this more precisely
-        
-        # Find all manifest files in depot cache
-        manifest_files = list(depot_cache_path.glob("*.manifest"))
-        
-        if not manifest_files:
-            print(f"[INFO] No manifest files found in depot cache")
+        if not manifest_filenames:
+            print(f"[INFO] No manifest files specified for removal.")
             return stats
-        
-        # Check if there's a corresponding data folder to match files
-        script_dir = Path(__file__).parent
-        data_folder = script_dir / "data" / app_id
-        
-        if data_folder.exists():
-            # Match manifest files from data folder
-            data_manifest_files = list(data_folder.glob("*.manifest"))
-            data_manifest_names = [f.name for f in data_manifest_files]
             
-            # Remove matching files from depot cache
-            for manifest_file in manifest_files:
-                if manifest_file.name in data_manifest_names:
-                    try:
-                        manifest_file.unlink()
-                        stats['removed_count'] += 1
-                        print(f"[INFO] Removed manifest: {manifest_file.name}")
-                    except Exception as e:
-                        print(f"[ERROR] Failed to remove manifest {manifest_file.name}: {e}")
-        else:
-            print(f"[WARNING] Data folder not found for AppID {app_id}, cannot match specific manifest files")
+        # Remove each specified manifest file
+        for filename in manifest_filenames:
+            manifest_file_path = depot_cache_path / filename
+            if manifest_file_path.exists():
+                try:
+                    manifest_file_path.unlink()
+                    stats['removed_count'] += 1
+                    print(f"[INFO] Removed manifest: {filename}")
+                except Exception as e:
+                    print(f"[ERROR] Failed to remove manifest {filename}: {e}")
+            else:
+                print(f"[WARNING] Manifest file not found in depotcache, skipping: {filename}")
         
-        print(f"[INFO] Depot cache cleanup complete for AppID {app_id}: {stats['removed_count']} removed")
+        print(f"[INFO] Depot cache cleanup complete: {stats['removed_count']} specified manifest(s) removed.")
         
     except Exception as e:
-        print(f"[ERROR] Failed to cleanup depot cache for AppID {app_id}: {e}")
+        print(f"[ERROR] Failed to cleanup depot cache: {e}")
     
     return stats
 

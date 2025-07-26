@@ -220,10 +220,11 @@ def uninstall_specific_appid(config, app_id: str, verbose=True) -> Dict[str, any
             result['errors'].append(f"AppID {app_id} not found in database")
             return result
         
-        # Get depot information before removal
+        # Get depot and manifest information before removal
         depots = db.get_appid_depots(app_id)
+        manifest_filenames = db.get_manifests_for_appid(app_id)
         if verbose:
-            print(f"[INFO] Found {len(depots)} depots for AppID {app_id}")
+            print(f"[INFO] Found {len(depots)} depots and {len(manifest_filenames)} manifests for AppID {app_id}")
         
         # Step 2: Remove depot keys from config.vdf
         steam_path_str = config.get('Paths', 'steam_path', fallback='')
@@ -251,11 +252,10 @@ def uninstall_specific_appid(config, app_id: str, verbose=True) -> Dict[str, any
             steam_path = Path(steam_path_str)
             if steam_path.is_dir():
                 try:
-                    manifest_stats = remove_manifests_for_appid(str(steam_path), app_id)
+                    manifest_stats = remove_manifests_for_appid(str(steam_path), manifest_filenames)
                     result['stats']['manifest_files_removed'] = manifest_stats.get('removed_count', 0)
-                    if manifest_stats.get('removed_count', 0) > 0:
-                        if verbose:
-                            print(f"[INFO] Removed {manifest_stats['removed_count']} manifest files from depot cache")
+                    if manifest_stats.get('removed_count', 0) > 0 and verbose:
+                        print(f"[INFO] Removed {manifest_stats['removed_count']} manifest files from depot cache")
                 except Exception as e:
                     result['warnings'].append(f"Depot cache cleanup failed: {e}")
         

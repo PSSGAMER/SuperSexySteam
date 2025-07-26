@@ -67,6 +67,7 @@ class GameInstaller:
             'stats': {
                 'depots_processed': 0,
                 'manifests_copied': 0,
+                'manifests_tracked': 0,
                 'greenluma_updated': False,
                 'config_vdf_updated': False,
                 'acf_generated': False
@@ -97,14 +98,20 @@ class GameInstaller:
             game_name = get_game_name_by_appid(app_id)
             print(f"[INFO] Retrieved game name: {game_name}")
             
-            # Step 3: Add to database with game name
-            if not self.db.add_appid_with_depots(app_id, depots, game_name):
-                result['errors'].append("Failed to add AppID and depots to database")
+            # Step 3: Collect manifest file names for database tracking
+            manifest_files = list(data_folder_path.glob("*.manifest"))
+            manifest_filenames = [f.name for f in manifest_files]
+            result['stats']['manifests_tracked'] = len(manifest_filenames)
+            print(f"[INFO] Found {len(manifest_filenames)} manifest files to track in database")
+
+            # Step 4: Add to database with game name, depots, and manifest filenames
+            if not self.db.add_appid_with_depots(app_id, depots, manifest_filenames, game_name):
+                result['errors'].append("Failed to add AppID, depots, and manifests to database")
                 return result
             
-            print(f"[INFO] Added AppID {app_id} ({game_name}) with {len(depots)} depots to database")
+            print(f"[INFO] Added AppID {app_id} ({game_name}) with {len(depots)} depots and {len(manifest_filenames)} manifests to database")
             
-            # Step 4: Update GreenLuma
+            # Step 5: Update GreenLuma
             if self.is_greenluma_path_valid:
                 try:
                     greenluma_result = process_single_appid_for_greenluma(str(self.greenluma_path), app_id, depots)
@@ -118,7 +125,7 @@ class GameInstaller:
             else:
                 result['warnings'].append("Invalid GreenLuma path, skipping GreenLuma update")
             
-            # Step 5: Update config.vdf
+            # Step 6: Update config.vdf
             if self.is_steam_path_valid:
                 try:
                     config_vdf_path = self.steam_path / 'config' / 'config.vdf'
@@ -138,7 +145,7 @@ class GameInstaller:
             else:
                 result['warnings'].append("Invalid Steam path, skipping config.vdf update")
             
-            # Step 6: Copy manifest files to depot cache
+            # Step 7: Copy manifest files to depot cache
             if self.is_steam_path_valid:
                 try:
                     manifest_stats = copy_manifests_for_appid(str(self.steam_path), app_id, data_folder)
@@ -150,7 +157,7 @@ class GameInstaller:
                 except Exception as e:
                     result['warnings'].append(f"Depot cache update failed: {e}")
             
-            # Step 7: Generate ACF file
+            # Step 8: Generate ACF file
             if self.is_steam_path_valid:
                 try:
                     acf_success = generate_acf_for_appid(str(self.steam_path), app_id)

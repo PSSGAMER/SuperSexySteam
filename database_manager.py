@@ -62,10 +62,22 @@ class GameDatabaseManager:
                         FOREIGN KEY (app_id) REFERENCES appids (app_id) ON DELETE CASCADE
                     )
                 ''')
+
+                # Create Manifests table to track manifest files for robust cleanup
+                cursor.execute('''
+                    CREATE TABLE IF NOT EXISTS manifests (
+                        app_id TEXT NOT NULL,
+                        filename TEXT NOT NULL,
+                        date_added TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        PRIMARY KEY (app_id, filename),
+                        FOREIGN KEY (app_id) REFERENCES appids (app_id) ON DELETE CASCADE
+                    )
+                ''')
                 
                 # Create indices for better performance
                 cursor.execute('CREATE INDEX IF NOT EXISTS idx_depots_app_id ON depots (app_id)')
                 cursor.execute('CREATE INDEX IF NOT EXISTS idx_appids_installed ON appids (is_installed)')
+                cursor.execute('CREATE INDEX IF NOT EXISTS idx_manifests_app_id ON manifests (app_id)')
                 
                 conn.commit()
                 conn.close()
@@ -158,13 +170,14 @@ class GameDatabaseManager:
             print(f"[Error] Failed to create new connection: {e}")
             raise
 
-    def add_appid_with_depots(self, app_id: str, depots: List[Dict[str, str]], game_name: str = None) -> bool:
+    def add_appid_with_depots(self, app_id: str, depots: List[Dict[str, str]], manifest_files: List[str], game_name: str = None) -> bool:
         """
-        Add an AppID with its associated depots to the database.
+        Add an AppID with its associated depots and manifest files to the database.
         
         Args:
             app_id (str): The Steam AppID
             depots (List[Dict]): List of depot dictionaries with 'depot_id' and optional 'depot_key'
+            manifest_files (List[str]): List of manifest filenames
             game_name (str): The name of the game (optional)
             
         Returns:
@@ -185,8 +198,9 @@ class GameDatabaseManager:
                     VALUES (?, ?, CURRENT_TIMESTAMP, 1)
                 ''', (app_id, game_name))
                 
-                # Remove existing depots for this AppID
+                # Remove existing depots and manifests for this AppID
                 cursor.execute('DELETE FROM depots WHERE app_id = ?', (app_id,))
+                cursor.execute('DELETE FROM manifests WHERE app_id = ?', (app_id,))
                 
                 # Insert new depots
                 for depot in depots:
@@ -198,6 +212,13 @@ class GameDatabaseManager:
                             INSERT INTO depots (depot_id, app_id, decryption_key)
                             VALUES (?, ?, ?)
                         ''', (depot_id, app_id, decryption_key))
+
+                # Insert new manifest files
+                for filename in manifest_files:
+                    cursor.execute('''
+                        INSERT INTO manifests (app_id, filename)
+                        VALUES (?, ?)
+                    ''', (app_id, filename))
                 
                 conn.commit()
                 return True
@@ -224,7 +245,7 @@ class GameDatabaseManager:
                 conn = self._get_connection()
                 cursor = conn.cursor()
                 
-                # Remove the AppID (CASCADE will remove associated depots)
+                # Remove the AppID (CASCADE will remove associated depots and manifests)
                 cursor.execute('DELETE FROM appids WHERE app_id = ?', (app_id,))
                 
                 conn.commit()
@@ -329,6 +350,31 @@ class GameDatabaseManager:
                 print(f"[Error] Failed to get depots for AppID {app_id}: {e}")
                 return []
     
+    def get_manifests_for_appid(self, app_id: str) -> List[str]:
+        """
+        Get all manifest filenames for a specific AppID.
+
+        Args:
+            app_id (str): The Steam AppID.
+
+        Returns:
+            List[str]: A list of manifest filenames.
+        """
+        with self._lock:
+            try:
+                conn = self._get_connection()
+                cursor = conn.cursor()
+
+                cursor.execute('SELECT filename FROM manifests WHERE app_id = ?', (app_id,))
+                results = cursor.fetchall()
+
+                conn.close()
+                return [row[0] for row in results]
+
+            except sqlite3.Error as e:
+                print(f"[Error] Failed to get manifest files for AppID {app_id}: {e}")
+                return []
+
     def get_all_installed_appids(self) -> List[str]:
         """
         Get all installed AppIDs from the database.
@@ -422,7 +468,7 @@ class GameDatabaseManager:
         Get statistics about the database contents.
         
         Returns:
-            Dict[str, int]: Statistics including total_appids, installed_appids, total_depots, depots_with_keys
+            Dict[str, int]: Statistics including total_appids, installed_appids, total_depots, depots_with_keys, and total_manifests
         """
         with self._lock:
             try:
@@ -445,18 +491,23 @@ class GameDatabaseManager:
                 cursor.execute('SELECT COUNT(*) FROM depots WHERE decryption_key IS NOT NULL')
                 depots_with_keys = cursor.fetchone()[0]
                 
+                # Get total manifest files tracked
+                cursor.execute('SELECT COUNT(*) FROM manifests')
+                total_manifests = cursor.fetchone()[0]
+                
                 conn.close()
                 
                 return {
                     'total_appids': total_appids,
                     'installed_appids': installed_appids,
                     'total_depots': total_depots,
-                    'depots_with_keys': depots_with_keys
+                    'depots_with_keys': depots_with_keys,
+                    'total_manifests': total_manifests
                 }
                 
             except sqlite3.Error as e:
                 print(f"[Error] Failed to get database stats: {e}")
-                return {'total_appids': 0, 'installed_appids': 0, 'total_depots': 0, 'depots_with_keys': 0}
+                return {'total_appids': 0, 'installed_appids': 0, 'total_depots': 0, 'depots_with_keys': 0, 'total_manifests': 0}
     
     def get_installed_games(self) -> List[Dict[str, str]]:
         """
@@ -593,14 +644,15 @@ def test_database():
     
     db = get_database_manager()
     
-    # Test adding an AppID with depots
+    # Test adding an AppID with depots and manifests
     test_depots = [
         {'depot_id': '12345', 'depot_key': 'abcdef123456'},
         {'depot_id': '12346'},  # No key
         {'depot_id': '12347', 'depot_key': '789abc456def'}
     ]
+    test_manifests = ['manifest_1.bin', 'manifest_2.bin']
     
-    success = db.add_appid_with_depots('999999', test_depots)
+    success = db.add_appid_with_depots('999999', test_depots, test_manifests, game_name="Test Game")
     print(f"Add AppID test: {'SUCCESS' if success else 'FAILED'}")
     
     # Test checking if AppID exists
@@ -610,6 +662,10 @@ def test_database():
     # Test getting depots
     retrieved_depots = db.get_appid_depots('999999')
     print(f"Retrieved {len(retrieved_depots)} depots for test AppID")
+
+    # Test getting manifests
+    retrieved_manifests = db.get_manifests_for_appid('999999')
+    print(f"Retrieved {len(retrieved_manifests)} manifests for test AppID: {retrieved_manifests}")
     
     # Test getting stats
     stats = db.get_database_stats()
