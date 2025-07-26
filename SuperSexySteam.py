@@ -3,41 +3,31 @@
 # A graphical user interface (GUI) tool for managing Steam depot files
 # (.lua and .manifest) with SQLite database backend. This script serves as the
 # user-facing front-end with real-time game installation/uninstallation.
+
 #
 # Workflow:
 # 1. On first launch, prompts the user to configure paths via modal dialogs.
 #    These settings are saved permanently in 'config.ini'.
 # 2. Presents a themed drag-and-drop interface. Users can drop a single .lua
 #    file (named <AppID>.lua) along with any associated .manifest files.
-# 3. The script organizes these files into a 'data/<AppID>/' directory structure,
-#    overwriting any existing data for that AppID.
-# 4. For new AppIDs: Immediately installs the game by running the complete workflow.
-# 5. For existing AppIDs: First uninstalls the old version, then installs the new version.
-# 6. All operations are tracked in a SQLite database for persistence and efficiency.
+# 3. All business logic is handled by the app_logic module.
+# 4. GUI only calls app_logic functions and displays the results.
 #
 # Dependencies:
 # - customtkinter: For the modern UI widgets.
 # - tkinterdnd2: To enable drag-and-drop functionality.
 # - Pillow (PIL): For dynamic image manipulation (header resizing and gradients).
-# - sqlite3: For database operations (built into Python).
+# - app_logic: The central brain module for all business operations.
 
 import customtkinter as ctk
 from tkinterdnd2 import DND_FILES, TkinterDnD
 from pathlib import Path
-import shutil
 import re
-import configparser
 from PIL import Image, ImageDraw
 import sys
-import time
 
-# Import our custom modules
-from greenluma_manager import configure_greenluma_injector
-from database_manager import get_database_manager
-from game_installer import GameInstaller
-from system_cleaner import clear_all_data, uninstall_specific_appid
-from steam_game_search import search_games, find_appid
-from steam_manager import is_steam_running, terminate_steam, run_steam_with_dll_injector
+# Import our central brain module
+from app_logic import SuperSexySteamLogic
 
 
 # =============================================================================
@@ -118,7 +108,6 @@ def create_gradient_image(width, height, color1, color2, vertical=True):
             draw.line([(i, 0), (i, height)], fill=(r, g, b))
 
     return ctk.CTkImage(light_image=gradient, size=(width, height))
-
 
 
 # =============================================================================
@@ -216,40 +205,18 @@ class App(TkinterDnD.Tk):
     """
     The main application class for SuperSexySteam.
 
-    This class builds the GUI, handles all user interactions (drag-and-drop,
-    button clicks), manages the SQLite database, and orchestrates
-    real-time game installation and uninstallation operations.
+    This class is focused only on GUI display and user interaction.
+    All business logic is handled by the SuperSexySteamLogic class from app_logic.py.
     """
-    def __init__(self, config: configparser.ConfigParser):
+    def __init__(self, logic: SuperSexySteamLogic):
         """
         Initializes the main application window and all its components.
 
         Args:
-            config (configparser.ConfigParser): The loaded application configuration.
+            logic (SuperSexySteamLogic): The initialized logic controller
         """
         super().__init__()
-        # Renamed to `app_config` to avoid collision with the built-in `self.config()` method.
-        self.app_config = config
-
-        # Terminate Steam if running (first thing we do)
-        print("[INFO] Checking for running Steam processes...")
-        if is_steam_running():
-            print("[INFO] Steam is running, terminating...")
-            self.terminate_steam_startup()
-        else:
-            print("[INFO] Steam is not running")
-
-        # Initialize database and game installer
-        self.db = get_database_manager()
-        self.game_installer = GameInstaller(config)
-        
-        # Update missing game names for existing databases (migration)
-        try:
-            updated_count = self.db.update_missing_game_names()
-            if updated_count > 0:
-                print(f"[INFO] Updated {updated_count} game names during database migration")
-        except Exception as e:
-            print(f"[WARNING] Failed to update missing game names: {e}")
+        self.logic = logic
 
         # --- Window Configuration ---
         # The root window is a standard Tk object, so it uses 'background' for its color.
@@ -391,216 +358,143 @@ class App(TkinterDnD.Tk):
             self.drop_frame.lift()
 
     def update_database_stats(self):
-        """Update the database statistics display."""
-        try:
-            stats = self.db.get_database_stats()
-            stats_text = f"Games: {stats['installed_appids']} installed | Depots: {stats['total_depots']} | With Keys: {stats['depots_with_keys']}"
-            self.stats_label.configure(text=stats_text)
-            print(f"[INFO] Database stats updated: {stats}")
-        except Exception as e:
-            self.stats_label.configure(text="Error loading database statistics")
-            print(f"[ERROR] Failed to update database stats: {e}")
+        """Update the database statistics display using app logic."""
+        stats_result = self.logic.get_database_stats()
+        if stats_result['success']:
+            self.stats_label.configure(text=stats_result['formatted_text'])
+        else:
+            self.stats_label.configure(text=stats_result['formatted_text'])
+
+    def update_status(self, message: str, level: str = "info"):
+        """Provides colored feedback to the user via the status label at the bottom."""
+        colors = {"info": Theme.TEXT_SECONDARY, "success": Theme.STATUS_SUCCESS,
+                  "error": Theme.STATUS_ERROR, "warning": Theme.STATUS_WARNING}
+        self.status_label.configure(text=message, text_color=colors.get(level, colors["info"]))
+        # Force GUI update to show status immediately
+        self.update_idletasks()
+
+    # =============================================================================
+    # --- EVENT HANDLERS ---
+    # =============================================================================
+
+    def on_drop(self, event):
+        """
+        Handle file drop events by delegating to app logic.
+        """
+        self.update_status("Processing dropped files...")
+        
+        # Parse dropped file paths
+        file_paths_str = re.findall(r'\{.*?\}|\S+', event.data)
+        file_paths = [path.strip('{}') for path in file_paths_str]
+        
+        # Delegate to app logic
+        result = self.logic.process_game_installation(file_paths)
+        
+        if result['success']:
+            action_verb = result['action_verb']
+            app_id = result['app_id']
+            stats = result['stats']
+            success_msg = f"{action_verb} AppID {app_id} successfully! ({stats['depots_processed']} depots, {stats['manifests_copied']} manifests)"
+            self.update_status(success_msg, "success")
+            
+            # Update database stats display
+            self.update_database_stats()
+            
+            # Show any warnings
+            if result['warnings']:
+                for warning in result['warnings']:
+                    print(f"[WARNING] {warning}")
+        else:
+            error_msg = result.get('error', 'Installation failed')
+            if 'errors' in result and result['errors']:
+                error_msg = '; '.join(result['errors'])
+            
+            self.update_status(f"Installation failed: {error_msg}", "error")
 
     def on_clear_data_click(self):
-        """
-        Comprehensive data clearing that removes all SuperSexySteam data from the system.
-        This includes database, data folder, depot keys, depot cache files, ACF files, and GreenLuma entries.
-        """
+        """Handle clear data button click using app logic."""
         self.update_status("Starting comprehensive data cleanup...", "warning")
         
-        try:
-            result = clear_all_data(self.app_config, verbose=True)
+        result = self.logic.clear_all_application_data()
+        
+        if result['success']:
+            self.update_status(f"Data cleanup completed! {result['summary']}", "success")
             
-            if result['success']:
-                stats = result['stats']
-                summary_parts = []
-                
-                if stats['database_cleared']:
-                    summary_parts.append("database")
-                if stats['data_folder_cleared']:
-                    summary_parts.append("data folder")
-                if stats['depot_keys_removed'] > 0:
-                    summary_parts.append(f"{stats['depot_keys_removed']} depot keys")
-                if stats['depotcache_files_removed'] > 0:
-                    summary_parts.append(f"{stats['depotcache_files_removed']} manifest files")
-                if stats['acf_files_removed'] > 0:
-                    summary_parts.append(f"{stats['acf_files_removed']} ACF files")
-                if stats['greenluma_files_removed'] > 0:
-                    summary_parts.append(f"{stats['greenluma_files_removed']} GreenLuma entries")
-                
-                summary = f"Cleared: {', '.join(summary_parts) if summary_parts else 'no data found'}"
-                self.update_status(f"Data cleanup completed! {summary}", "success")
-                
-                if result['warnings']:
-                    for warning in result['warnings']:
-                        print(f"[WARNING] {warning}")
-                
-                # Update stats display
-                self.update_database_stats()
-                
-            else:
-                error_msg = '; '.join(result['errors'])
-                self.update_status(f"Data cleanup failed: {error_msg}", "error")
-                
-        except Exception as e:
-            self.update_status(f"Error during data cleanup: {e}", "error")
-            print(f"[ERROR] Failed to clear data: {e}")
+            if result['warnings']:
+                for warning in result['warnings']:
+                    print(f"[WARNING] {warning}")
+            
+            # Update stats display
+            self.update_database_stats()
+        else:
+            self.update_status(f"Data cleanup failed: {result['error']}", "error")
 
     def on_uninstall_click(self):
-        """
-        Shows a dialog to get AppID input and uninstalls the specified game.
-        """
+        """Handle uninstall button click using app logic."""
         # Create input dialog
         dialog = ctk.CTkInputDialog(text="Enter AppID to uninstall:", title="Uninstall Game")
         app_id = dialog.get_input()
         
         if app_id is None or app_id.strip() == "":
             return  # User cancelled or entered empty string
+        
+        self.update_status(f"Uninstalling AppID {app_id.strip()}...", "warning")
+        
+        result = self.logic.uninstall_game(app_id)
+        
+        if result['success']:
+            self.update_status(f"AppID {result['app_id']} uninstalled! {result['summary']}", "success")
             
-        app_id = app_id.strip()
-        
-        # Validate AppID is numeric
-        if not app_id.isdigit():
-            self.update_status(f"Invalid AppID: '{app_id}'. Must be numeric.", "error")
-            return
-        
-        self.update_status(f"Uninstalling AppID {app_id}...", "warning")
-        
-        try:
-            result = uninstall_specific_appid(self.app_config, app_id, verbose=True)
+            if result['warnings']:
+                for warning in result['warnings']:
+                    print(f"[WARNING] {warning}")
             
-            if result['success']:
-                stats = result['stats']
-                summary_parts = []
-                
-                if stats['database_entry_removed']:
-                    summary_parts.append("database entry")
-                if stats['data_folder_removed']:
-                    summary_parts.append("data folder")
-                if stats['depot_keys_removed'] > 0:
-                    summary_parts.append(f"{stats['depot_keys_removed']} depot keys")
-                if stats['manifest_files_removed'] > 0:
-                    summary_parts.append(f"{stats['manifest_files_removed']} manifest files")
-                if stats['acf_file_removed']:
-                    summary_parts.append("ACF file")
-                if stats['greenluma_files_removed'] > 0:
-                    summary_parts.append(f"{stats['greenluma_files_removed']} GreenLuma entries")
-                
-                summary = f"Removed: {', '.join(summary_parts) if summary_parts else 'no components found'}"
-                self.update_status(f"AppID {app_id} uninstalled! {summary}", "success")
-                
-                if result['warnings']:
-                    for warning in result['warnings']:
-                        print(f"[WARNING] {warning}")
-                
-                # Update stats display
-                self.update_database_stats()
-                
-            else:
-                error_msg = '; '.join(result['errors'])
-                self.update_status(f"Uninstallation failed: {error_msg}", "error")
-                
-        except Exception as e:
-            self.update_status(f"Error during uninstallation: {e}", "error")
-            print(f"[ERROR] Failed to uninstall AppID {app_id}: {e}")
-
-    def wait_for_steam_termination(self, max_wait_seconds=15, check_interval=0.5):
-        """
-        Wait for Steam processes to fully terminate with active polling.
-        
-        Args:
-            max_wait_seconds (int): Maximum time to wait for termination
-            check_interval (float): How often to check (in seconds)
-            
-        Returns:
-            bool: True if Steam fully terminated, False if timeout occurred
-        """
-        start_time = time.time()
-        
-        while time.time() - start_time < max_wait_seconds:
-            if not is_steam_running():
-                return True
-            
-            # Update GUI to show progress
-            elapsed = int(time.time() - start_time)
-            self.update_status(f"Waiting for Steam termination... ({elapsed}s)", "info")
-            self.update_idletasks()
-            
-            time.sleep(check_interval)
-        
-        return False
-
-    def terminate_steam_startup(self):
-        """
-        Terminate Steam processes at application startup.
-        """
-        try:
-            result = terminate_steam()
-            if result['success']:
-                if result['terminated_processes'] > 0:
-                    print(f"[INFO] Terminated {result['terminated_processes']} Steam process(es) at startup")
-                else:
-                    print("[INFO] No Steam processes to terminate at startup")
-            else:
-                print(f"[WARNING] Failed to terminate Steam at startup: {'; '.join(result['errors'])}")
-        except Exception as e:
-            print(f"[ERROR] Error terminating Steam at startup: {e}")
+            # Update stats display
+            self.update_database_stats()
+        else:
+            self.update_status(f"Uninstallation failed: {result['error']}", "error")
 
     def on_run_steam_click(self):
-        """
-        Handle the "Run Steam" button click.
-        Check if Steam is running, terminate it if needed, then launch via DLLInjector.
-        """
+        """Handle run Steam button click using app logic."""
         self.update_status("Preparing to launch Steam...", "info")
         
-        try:
-            # Check if Steam is running
-            if is_steam_running():
-                self.update_status("Steam is running. Terminating existing processes...", "warning")
-                
-                # Terminate Steam
-                result = terminate_steam()
-                if result['success']:
-                    if result['terminated_processes'] > 0:
-                        self.update_status(f"Terminated {result['terminated_processes']} Steam process(es)", "success")
-                    else:
-                        self.update_status("No Steam processes to terminate", "info")
-                else:
-                    error_msg = '; '.join(result['errors'])
-                    self.update_status(f"Failed to terminate Steam: {error_msg}", "error")
-                    return
-                
-                # Wait for processes to terminate with active polling
-                self.update_status("Waiting for Steam to fully terminate...", "info")
-                if not self.wait_for_steam_termination():
-                    self.update_status("Warning: Steam may not have fully terminated", "warning")
-                    # Still proceed, but warn the user
+        result = self.logic.launch_steam()
+        
+        if result['success']:
+            # Show all messages
+            for message in result['messages']:
+                print(f"[INFO] {message}")
             
-            # Launch Steam via DLLInjector
-            self.update_status("Launching Steam via DLLInjector...", "info")
-            launch_result = run_steam_with_dll_injector(self.app_config)
+            # Show final success message
+            final_message = result['messages'][-1] if result['messages'] else "Steam launched successfully! 🚀"
+            self.update_status(final_message, "success")
             
-            if launch_result['success']:
-                self.update_status("Steam launched successfully! 🚀", "success")
-            else:
-                error_msg = '; '.join(launch_result['errors'])
+            # Show warnings if any
+            if result['warnings']:
+                for warning in result['warnings']:
+                    print(f"[WARNING] {warning}")
+        else:
+            # Show error
+            if result['errors']:
+                error_msg = '; '.join(result['errors'])
                 self.update_status(f"Failed to launch Steam: {error_msg}", "error")
-                
-        except Exception as e:
-            self.update_status(f"Error launching Steam: {e}", "error")
-            print(f"[ERROR] Failed to launch Steam: {e}")
+            else:
+                self.update_status("Failed to launch Steam", "error")
 
     def on_search_click(self):
-        """
-        Handle the "Game Search" button click.
-        Opens a new window where users can search for Steam games by name.
-        """
+        """Handle game search button click."""
         self.open_search_window()
 
+    def on_installed_games_click(self):
+        """Handle installed games button click."""
+        self.open_installed_games_window()
+
+    # =============================================================================
+    # --- SEARCH WINDOW ---
+    # =============================================================================
+
     def open_search_window(self):
-        """
-        Open the Steam Game Search window.
-        """
+        """Open the Steam Game Search window."""
         # Create a new window for game search
         search_window = ctk.CTkToplevel(self)
         search_window.title("Steam Game Search")
@@ -690,51 +584,52 @@ class App(TkinterDnD.Tk):
         status_label.configure(text=f"Searching for '{query}'...", text_color=Theme.TEXT_SECONDARY)
         results_frame.update_idletasks()
         
-        try:
-            # Perform the search (max 20 results as specified)
-            games = search_games(query, max_results=20)
+        # Perform search using app logic
+        result = self.logic.search_steam_games(query, max_results=20)
+        
+        if not result['success']:
+            status_label.configure(text=f"Error searching: {result['error']}", text_color=Theme.STATUS_ERROR)
+            return
+        
+        games = result['games']
+        
+        if not games:
+            status_label.configure(text=f"No games found for '{query}'", text_color=Theme.STATUS_WARNING)
+            no_results_label = ctk.CTkLabel(results_frame, text="No games found. Try a different search term.", 
+                                           font=Theme.FONT_PRIMARY, text_color=Theme.TEXT_SECONDARY)
+            no_results_label.pack(pady=20)
+            return
+        
+        # Update status with results count
+        status_label.configure(text=f"Found {len(games)} games for '{query}'", text_color=Theme.STATUS_SUCCESS)
+        
+        # Display results
+        for i, game in enumerate(games, 1):
+            # Create a frame for each game result
+            game_frame = ctk.CTkFrame(results_frame, fg_color=Theme.BG_DARK, corner_radius=8)
+            game_frame.pack(fill="x", padx=5, pady=5)
             
-            if not games:
-                status_label.configure(text=f"No games found for '{query}'", text_color=Theme.STATUS_WARNING)
-                no_results_label = ctk.CTkLabel(results_frame, text="No games found. Try a different search term.", 
-                                               font=Theme.FONT_PRIMARY, text_color=Theme.TEXT_SECONDARY)
-                no_results_label.pack(pady=20)
-                return
+            # Game info frame
+            info_frame = ctk.CTkFrame(game_frame, fg_color="transparent")
+            info_frame.pack(fill="x", padx=10, pady=10)
             
-            # Update status with results count
-            status_label.configure(text=f"Found {len(games)} games for '{query}'", text_color=Theme.STATUS_SUCCESS)
+            # Game number and name
+            name_label = ctk.CTkLabel(info_frame, text=f"{i}. {game['name']}", 
+                                     font=("Segoe UI", 14, "bold"), text_color=Theme.TEXT_PRIMARY, anchor="w")
+            name_label.pack(fill="x")
             
-            # Display results
-            for i, game in enumerate(games, 1):
-                # Create a frame for each game result
-                game_frame = ctk.CTkFrame(results_frame, fg_color=Theme.BG_DARK, corner_radius=8)
-                game_frame.pack(fill="x", padx=5, pady=5)
-                
-                # Game info frame
-                info_frame = ctk.CTkFrame(game_frame, fg_color="transparent")
-                info_frame.pack(fill="x", padx=10, pady=10)
-                
-                # Game number and name
-                name_label = ctk.CTkLabel(info_frame, text=f"{i}. {game['name']}", 
-                                         font=("Segoe UI", 14, "bold"), text_color=Theme.TEXT_PRIMARY, anchor="w")
-                name_label.pack(fill="x")
-                
-                # AppID and type
-                details_text = f"AppID: {game['appid']} | Type: {game['type']}"
-                details_label = ctk.CTkLabel(info_frame, text=details_text, 
-                                           font=Theme.FONT_PRIMARY, text_color=Theme.TEXT_SECONDARY, anchor="w")
-                details_label.pack(fill="x")
-                
-                # Copy AppID button
-                copy_btn = ctk.CTkButton(info_frame, text=f"📋 Copy AppID ({game['appid']})", 
-                                        font=("Segoe UI", 11), width=150, height=25,
-                                        fg_color=Theme.STATUS_SUCCESS, hover_color="#4caf50",
-                                        command=lambda aid=game['appid']: self.copy_appid_to_clipboard(aid, status_label))
-                copy_btn.pack(pady=(5, 0), anchor="w")
-                
-        except Exception as e:
-            status_label.configure(text=f"Error searching: {str(e)}", text_color=Theme.STATUS_ERROR)
-            print(f"[ERROR] Search failed: {e}")
+            # AppID and type
+            details_text = f"AppID: {game['appid']} | Type: {game['type']}"
+            details_label = ctk.CTkLabel(info_frame, text=details_text, 
+                                       font=Theme.FONT_PRIMARY, text_color=Theme.TEXT_SECONDARY, anchor="w")
+            details_label.pack(fill="x")
+            
+            # Copy AppID button
+            copy_btn = ctk.CTkButton(info_frame, text=f"📋 Copy AppID ({game['appid']})", 
+                                    font=("Segoe UI", 11), width=150, height=25,
+                                    fg_color=Theme.STATUS_SUCCESS, hover_color="#4caf50",
+                                    command=lambda aid=game['appid']: self.copy_appid_to_clipboard(aid, status_label))
+            copy_btn.pack(pady=(5, 0), anchor="w")
 
     def copy_appid_to_clipboard(self, appid, status_label):
         """
@@ -753,125 +648,9 @@ class App(TkinterDnD.Tk):
             status_label.configure(text=f"Failed to copy AppID: {str(e)}", text_color=Theme.STATUS_ERROR)
             print(f"[ERROR] Failed to copy AppID {appid}: {e}")
 
-    def update_status(self, message: str, level: str = "info"):
-        """Provides colored feedback to the user via the status label at the bottom."""
-        colors = {"info": Theme.TEXT_SECONDARY, "success": Theme.STATUS_SUCCESS,
-                  "error": Theme.STATUS_ERROR, "warning": Theme.STATUS_WARNING}
-        self.status_label.configure(text=message, text_color=colors.get(level, colors["info"]))
-        print(f"[{level.upper()}] {message}")
-        # Force GUI update to show status immediately
-        self.update_idletasks()
-
-    def on_drop(self, event):
-        """
-        The main logic handler for when files are dropped onto the drop zone.
-        It validates input, organizes files, and immediately processes the game
-        for installation or update.
-        """
-        self.update_status("Processing dropped files...")
-        file_paths_str = re.findall(r'\{.*?\}|\S+', event.data)
-        file_paths = [path.strip('{}') for path in file_paths_str]
-
-        # Validate that exactly one .lua file was dropped.
-        lua_files = [p for p in file_paths if p.lower().endswith('.lua')]
-        if len(lua_files) != 1:
-            msg = f"Error: {len(lua_files) if len(lua_files) > 1 else 'No'} .lua file{'s' if len(lua_files) > 1 else ''} dropped."
-            self.update_status(f"{msg} Please drop exactly one.", "error")
-            return
-
-        # Extract AppID from the filename and validate it's a number.
-        lua_path = Path(lua_files[0])
-        app_id = lua_path.stem
-        if not app_id.isdigit():
-            self.update_status(f"Invalid Lua filename: '{lua_path.name}'. Name must be a numeric AppID.", "error")
-            return
-
-        # Prepare the destination directory
-        script_directory = Path(__file__).parent
-        destination_directory = script_directory / "data" / app_id
-
-        # Check if this is an update or new installation
-        is_update = self.db.is_appid_exists(app_id)
-        
-        if is_update:
-            self.update_status(f"Updating existing AppID {app_id}...", "info")
-            
-            # First uninstall the existing game
-            try:
-                uninstall_result = self.game_installer.uninstall_game(app_id)
-                if uninstall_result['success']:
-                    print(f"[INFO] Successfully uninstalled existing AppID {app_id} for update.")
-                    # Use a less verbose message for the update process
-                    self.update_status(f"Old version of AppID {app_id} removed. Proceeding with install.", "success")
-                else:
-                    # Allow continuing but show a warning. The old data might be partially removed.
-                    self.update_status(f"Warning: Uninstall had issues: {'; '.join(uninstall_result['errors'])}", "warning")
-                    print(f"[WARNING] Uninstall errors for AppID {app_id}: {uninstall_result['errors']}")
-            except Exception as e:
-                self.update_status(f"Error during uninstallation step: {e}", "error")
-                print(f"[ERROR] Failed to uninstall AppID {app_id}: {e}")
-                return
-        else:
-            self.update_status(f"Installing new AppID {app_id}...", "info")
-
-    
-        destination_directory.mkdir(parents=True, exist_ok=True)
-
-        # Copy all valid files to the destination.
-        copied_files_count = 0
-        for path_str in file_paths:
-            path = Path(path_str)
-            if path.suffix.lower() in ('.lua', '.manifest'):
-                try:
-                    shutil.copy2(path, destination_directory / path.name)
-                    copied_files_count += 1
-                except Exception as e:
-                    self.update_status(f"Error copying '{path.name}': {e}", "error")
-                    shutil.rmtree(destination_directory, ignore_errors=True)  # Clean up on failure.
-                    return
-
-        # Now install the game using the new installer
-        try:
-            install_result = self.game_installer.install_game(app_id, str(destination_directory))
-            
-            if install_result['success']:
-                action_verb = "Updated" if is_update else "Installed"
-                stats = install_result['stats']
-                success_msg = f"{action_verb} AppID {app_id} successfully! ({stats['depots_processed']} depots, {stats['manifests_copied']} manifests)"
-                self.update_status(success_msg, "success")
-                
-                # Update database stats display
-                self.update_database_stats()
-                
-                # Show any warnings
-                if install_result['warnings']:
-                    for warning in install_result['warnings']:
-                        print(f"[WARNING] {warning}")
-                
-            else:
-                # Installation failed, clean up
-                self.update_status(f"Installation failed for AppID {app_id}: {'; '.join(install_result['errors'])}", "error")
-                for error in install_result['errors']:
-                    print(f"[ERROR] {error}")
-                
-                # Clean up the data folder
-                if destination_directory.exists():
-                    shutil.rmtree(destination_directory, ignore_errors=True)
-                
-        except Exception as e:
-            self.update_status(f"Unexpected error during installation: {e}", "error")
-            print(f"[ERROR] Installation error for AppID {app_id}: {e}")
-            
-            # Clean up the data folder
-            if destination_directory.exists():
-                shutil.rmtree(destination_directory, ignore_errors=True)
-
-    def on_installed_games_click(self):
-        """
-        Handle the "Installed Games" button click.
-        Opens a new window showing all installed games with uninstall options.
-        """
-        self.open_installed_games_window()
+    # =============================================================================
+    # --- INSTALLED GAMES WINDOW ---
+    # =============================================================================
 
     def open_installed_games_window(self):
         """
@@ -942,57 +721,58 @@ class App(TkinterDnD.Tk):
         status_label.configure(text="Loading installed games...", text_color=Theme.TEXT_SECONDARY)
         games_frame.update_idletasks()
         
-        try:
-            # Get installed games from database
-            games = self.db.get_installed_games()
+        # Get games using app logic
+        result = self.logic.get_installed_games()
+        
+        if not result['success']:
+            status_label.configure(text=f"Error loading games: {result['error']}", text_color=Theme.STATUS_ERROR)
+            return
+        
+        games = result['games']
+        
+        if not games:
+            status_label.configure(text="No games installed", text_color=Theme.STATUS_WARNING)
+            no_games_label = ctk.CTkLabel(games_frame, text="No games found. Install some games first!", 
+                                         font=Theme.FONT_PRIMARY, text_color=Theme.TEXT_SECONDARY)
+            no_games_label.pack(pady=30)
+            return
+        
+        # Update status with games count
+        status_label.configure(text=f"Found {len(games)} installed games", text_color=Theme.STATUS_SUCCESS)
+        
+        # Display games
+        for i, game in enumerate(games, 1):
+            # Create a frame for each game
+            game_frame = ctk.CTkFrame(games_frame, fg_color=Theme.BG_DARK, corner_radius=8)
+            game_frame.pack(fill="x", padx=5, pady=5)
             
-            if not games:
-                status_label.configure(text="No games installed", text_color=Theme.STATUS_WARNING)
-                no_games_label = ctk.CTkLabel(games_frame, text="No games found. Install some games first!", 
-                                             font=Theme.FONT_PRIMARY, text_color=Theme.TEXT_SECONDARY)
-                no_games_label.pack(pady=30)
-                return
+            # Game info frame
+            info_frame = ctk.CTkFrame(game_frame, fg_color="transparent")
+            info_frame.pack(fill="x", padx=15, pady=15)
             
-            # Update status with games count
-            status_label.configure(text=f"Found {len(games)} installed games", text_color=Theme.STATUS_SUCCESS)
+            # Top row: Game number and name
+            top_row = ctk.CTkFrame(info_frame, fg_color="transparent")
+            top_row.pack(fill="x")
             
-            # Display games
-            for i, game in enumerate(games, 1):
-                # Create a frame for each game
-                game_frame = ctk.CTkFrame(games_frame, fg_color=Theme.BG_DARK, corner_radius=8)
-                game_frame.pack(fill="x", padx=5, pady=5)
-                
-                # Game info frame
-                info_frame = ctk.CTkFrame(game_frame, fg_color="transparent")
-                info_frame.pack(fill="x", padx=15, pady=15)
-                
-                # Top row: Game number and name
-                top_row = ctk.CTkFrame(info_frame, fg_color="transparent")
-                top_row.pack(fill="x")
-                
-                name_label = ctk.CTkLabel(top_row, text=f"{i}. {game['game_name']}", 
-                                         font=("Segoe UI", 16, "bold"), text_color=Theme.TEXT_PRIMARY, anchor="w")
-                name_label.pack(side="left", fill="x", expand=True)
-                
-                # Bottom row: AppID and uninstall button
-                bottom_row = ctk.CTkFrame(info_frame, fg_color="transparent")
-                bottom_row.pack(fill="x", pady=(10, 0))
-                
-                appid_label = ctk.CTkLabel(bottom_row, text=f"AppID: {game['app_id']}", 
-                                          font=Theme.FONT_PRIMARY, text_color=Theme.TEXT_SECONDARY, anchor="w")
-                appid_label.pack(side="left")
-                
-                # Uninstall button
-                uninstall_btn = ctk.CTkButton(bottom_row, text="🗑️ Uninstall", 
-                                             font=("Segoe UI", 12), width=100, height=30,
-                                             fg_color=Theme.STATUS_ERROR, hover_color="#d32f2f",
-                                             command=lambda aid=game['app_id'], name=game['game_name']: 
-                                             self.uninstall_game_from_list(aid, name, games_frame, status_label))
-                uninstall_btn.pack(side="right", padx=(10, 0))
-                
-        except Exception as e:
-            status_label.configure(text=f"Error loading games: {str(e)}", text_color=Theme.STATUS_ERROR)
-            print(f"[ERROR] Failed to load installed games: {e}")
+            name_label = ctk.CTkLabel(top_row, text=f"{i}. {game['game_name']}", 
+                                     font=("Segoe UI", 16, "bold"), text_color=Theme.TEXT_PRIMARY, anchor="w")
+            name_label.pack(side="left", fill="x", expand=True)
+            
+            # Bottom row: AppID and uninstall button
+            bottom_row = ctk.CTkFrame(info_frame, fg_color="transparent")
+            bottom_row.pack(fill="x", pady=(10, 0))
+            
+            appid_label = ctk.CTkLabel(bottom_row, text=f"AppID: {game['app_id']}", 
+                                      font=Theme.FONT_PRIMARY, text_color=Theme.TEXT_SECONDARY, anchor="w")
+            appid_label.pack(side="left")
+            
+            # Uninstall button
+            uninstall_btn = ctk.CTkButton(bottom_row, text="🗑️ Uninstall", 
+                                         font=("Segoe UI", 12), width=100, height=30,
+                                         fg_color=Theme.STATUS_ERROR, hover_color="#d32f2f",
+                                         command=lambda aid=game['app_id'], name=game['game_name']: 
+                                         self.uninstall_game_from_list(aid, name, games_frame, status_label))
+            uninstall_btn.pack(side="right", padx=(10, 0))
 
     def uninstall_game_from_list(self, app_id, game_name, games_frame, status_label):
         """
@@ -1019,23 +799,17 @@ class App(TkinterDnD.Tk):
         
         status_label.configure(text=f"Uninstalling {game_name}...", text_color=Theme.STATUS_WARNING)
         
-        try:
-            # Use the existing uninstall logic
-            result = uninstall_specific_appid(self.app_config, app_id, verbose=True)
-            
-            if result['success']:
-                status_label.configure(text=f"Successfully uninstalled {game_name}", text_color=Theme.STATUS_SUCCESS)
-                # Refresh the main app database stats
-                self.update_database_stats()
-                # Refresh the games list
-                self.refresh_installed_games(games_frame, status_label)
-            else:
-                error_msg = '; '.join(result['errors'])
-                status_label.configure(text=f"Failed to uninstall {game_name}: {error_msg}", text_color=Theme.STATUS_ERROR)
-                
-        except Exception as e:
-            status_label.configure(text=f"Error uninstalling {game_name}: {e}", text_color=Theme.STATUS_ERROR)
-            print(f"[ERROR] Failed to uninstall {game_name} (AppID {app_id}): {e}")
+        # Use app logic for uninstallation
+        uninstall_result = self.logic.uninstall_game(app_id)
+        
+        if uninstall_result['success']:
+            status_label.configure(text=f"Successfully uninstalled {game_name}", text_color=Theme.STATUS_SUCCESS)
+            # Refresh the main app database stats
+            self.update_database_stats()
+            # Refresh the games list
+            self.refresh_installed_games(games_frame, status_label)
+        else:
+            status_label.configure(text=f"Failed to uninstall {game_name}: {uninstall_result['error']}", text_color=Theme.STATUS_ERROR)
 
 
 # =============================================================================
@@ -1047,41 +821,14 @@ if __name__ == "__main__":
     The main execution block. It handles the initial configuration setup
     and launches the main application window.
     """
-    config_file = Path('config.ini')
-    config = configparser.ConfigParser()
-
-    # Check if the config file exists. If not, run the first-time setup.
-    if not config_file.exists():
-        setup_root = ctk.CTk()
-        setup_root.withdraw()
-
-        print("[INFO] config.ini not found. Starting first-time setup.")
-
-        steam_dialog = PathEntryDialog(setup_root, "Steam Path Setup", "Please enter your Steam installation directory.", "Leave empty for C:\\Program Files (x86)\\Steam")
-        steam_path = steam_dialog.get_input()
-        if steam_path is None: sys.exit()
-        if steam_path == "": steam_path = "C:\\Program Files (x86)\\Steam"
-
-        gl_dialog = PathEntryDialog(setup_root, "GreenLuma Path Setup", "Please enter your GreenLuma directory.", "Leave empty for default (script's folder)")
-        gl_path = gl_dialog.get_input()
-        if gl_path is None: sys.exit()
-        if gl_path == "":
-            base_dir = Path(__file__).parent
-            gl_path = base_dir / "GreenLuma"
-            gl_path.mkdir(exist_ok=True)
-
-        config['Paths'] = {'steam_path': steam_path, 'greenluma_path': str(gl_path)}
-        
-        with config_file.open('w') as f:
-            config.write(f)
-        
-        # Configure the GreenLuma DLLInjector.ini with the paths
-        configure_greenluma_injector(steam_path, str(gl_path))
-        
-        setup_root.destroy()
-
-    # Load the config and launch the main application.
-    config.read(config_file)
+    # Load or setup configuration using app logic
+    config = SuperSexySteamLogic.load_configuration()
+    if config is None:
+        sys.exit("Setup cancelled or failed")
     
-    app = App(config)
+    # Initialize the logic controller
+    logic = SuperSexySteamLogic(config)
+    
+    # Launch the GUI with the logic controller
+    app = App(logic)
     app.mainloop()
