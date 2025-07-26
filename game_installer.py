@@ -23,7 +23,7 @@ class GameInstaller:
     
     def __init__(self, config):
         """
-        Initialize the game installer with configuration.
+        Initialize the game installer with configuration and perform initial path checks.
         
         Args:
             config: ConfigParser instance with application configuration
@@ -31,6 +31,19 @@ class GameInstaller:
         self.config = config
         self.db = get_database_manager()
         
+        # --- Centralized Path Validation ---
+        # Get paths from config once and validate them.
+        self.steam_path = self.config.get('Paths', 'steam_path', fallback='')
+        self.greenluma_path = self.config.get('Paths', 'greenluma_path', fallback='')
+        
+        self.is_steam_path_valid = self.steam_path and os.path.isdir(self.steam_path)
+        self.is_greenluma_path_valid = self.greenluma_path and os.path.isdir(self.greenluma_path)
+        
+        if not self.is_steam_path_valid:
+            print(f"[WARNING] Steam path is not configured or invalid: '{self.steam_path}'")
+        if not self.is_greenluma_path_valid:
+            print(f"[WARNING] GreenLuma path is not configured or invalid: '{self.greenluma_path}'")
+
     def install_game(self, app_id: str, data_folder: str) -> Dict[str, any]:
         """
         Install a game by processing its lua file and performing all necessary operations.
@@ -85,10 +98,9 @@ class GameInstaller:
             print(f"[INFO] Added AppID {app_id} ({game_name}) with {len(depots)} depots to database")
             
             # Step 4: Update GreenLuma
-            greenluma_path = self.config.get('Paths', 'greenluma_path', fallback='')
-            if greenluma_path and os.path.isdir(greenluma_path):
+            if self.is_greenluma_path_valid:
                 try:
-                    greenluma_result = process_single_appid_for_greenluma(greenluma_path, app_id, depots)
+                    greenluma_result = process_single_appid_for_greenluma(self.greenluma_path, app_id, depots)
                     if greenluma_result['success']:
                         result['stats']['greenluma_updated'] = True
                         print(f"[INFO] GreenLuma updated for AppID {app_id}")
@@ -100,10 +112,9 @@ class GameInstaller:
                 result['warnings'].append("Invalid GreenLuma path, skipping GreenLuma update")
             
             # Step 5: Update config.vdf
-            steam_path = self.config.get('Paths', 'steam_path', fallback='')
-            if steam_path and os.path.isdir(steam_path):
+            if self.is_steam_path_valid:
                 try:
-                    config_vdf_path = os.path.join(steam_path, 'config', 'config.vdf')
+                    config_vdf_path = os.path.join(self.steam_path, 'config', 'config.vdf')
                     # Only add depots that have decryption keys
                     depots_with_keys = [d for d in depots if 'depot_key' in d]
                     if depots_with_keys:
@@ -121,9 +132,9 @@ class GameInstaller:
                 result['warnings'].append("Invalid Steam path, skipping config.vdf update")
             
             # Step 6: Copy manifest files to depot cache
-            if steam_path and os.path.isdir(steam_path):
+            if self.is_steam_path_valid:
                 try:
-                    manifest_stats = copy_manifests_for_appid(steam_path, app_id, data_folder)
+                    manifest_stats = copy_manifests_for_appid(self.steam_path, app_id, data_folder)
                     result['stats']['manifests_copied'] = manifest_stats.get('copied_count', 0)
                     if manifest_stats.get('copied_count', 0) > 0:
                         print(f"[INFO] Copied {manifest_stats['copied_count']} manifest files to depot cache")
@@ -133,9 +144,9 @@ class GameInstaller:
                     result['warnings'].append(f"Depot cache update failed: {e}")
             
             # Step 7: Generate ACF file
-            if steam_path and os.path.isdir(steam_path):
+            if self.is_steam_path_valid:
                 try:
-                    acf_success = generate_acf_for_appid(steam_path, app_id)
+                    acf_success = generate_acf_for_appid(self.steam_path, app_id)
                     if acf_success:
                         result['stats']['acf_generated'] = True
                         print(f"[INFO] ACF file generated for AppID {app_id}")
@@ -189,10 +200,9 @@ class GameInstaller:
             result['stats']['depots_removed'] = len(depots)
             
             # Step 1: Remove from GreenLuma
-            greenluma_path = self.config.get('Paths', 'greenluma_path', fallback='')
-            if greenluma_path and os.path.isdir(greenluma_path):
+            if self.is_greenluma_path_valid:
                 try:
-                    greenluma_result = remove_appid_from_greenluma(greenluma_path, app_id, depots)
+                    greenluma_result = remove_appid_from_greenluma(self.greenluma_path, app_id, depots)
                     if greenluma_result['success']:
                         result['stats']['greenluma_updated'] = True
                         print(f"[INFO] Removed AppID {app_id} from GreenLuma")
@@ -202,10 +212,9 @@ class GameInstaller:
                     result['warnings'].append(f"GreenLuma removal failed: {e}")
             
             # Step 2: Remove from config.vdf
-            steam_path = self.config.get('Paths', 'steam_path', fallback='')
-            if steam_path and os.path.isdir(steam_path):
+            if self.is_steam_path_valid:
                 try:
-                    config_vdf_path = os.path.join(steam_path, 'config', 'config.vdf')
+                    config_vdf_path = os.path.join(self.steam_path, 'config', 'config.vdf')
                     depots_with_keys = [d for d in depots if 'depot_key' in d]
                     if depots_with_keys:
                         vdf_success = remove_depots_from_config_vdf(config_vdf_path, depots_with_keys)
@@ -218,9 +227,9 @@ class GameInstaller:
                     result['warnings'].append(f"Config.vdf update failed: {e}")
             
             # Step 3: Remove manifest files from depot cache
-            if steam_path and os.path.isdir(steam_path):
+            if self.is_steam_path_valid:
                 try:
-                    manifest_stats = remove_manifests_for_appid(steam_path, app_id)
+                    manifest_stats = remove_manifests_for_appid(self.steam_path, app_id)
                     result['stats']['manifests_removed'] = manifest_stats.get('removed_count', 0)
                     if manifest_stats.get('removed_count', 0) > 0:
                         print(f"[INFO] Removed {manifest_stats['removed_count']} manifest files from depot cache")
@@ -228,9 +237,9 @@ class GameInstaller:
                     result['warnings'].append(f"Depot cache cleanup failed: {e}")
             
             # Step 4: Remove ACF file
-            if steam_path and os.path.isdir(steam_path):
+            if self.is_steam_path_valid:
                 try:
-                    acf_success = remove_acf_for_appid(steam_path, app_id)
+                    acf_success = remove_acf_for_appid(self.steam_path, app_id)
                     if acf_success:
                         result['stats']['acf_removed'] = True
                         print(f"[INFO] Removed ACF file for AppID {app_id}")
@@ -287,9 +296,8 @@ class GameInstaller:
                 result['valid'] = False
             
             # Check GreenLuma
-            greenluma_path = self.config.get('Paths', 'greenluma_path', fallback='')
-            if greenluma_path and os.path.isdir(greenluma_path):
-                applist_dir = os.path.join(greenluma_path, 'NormalMode', 'AppList')
+            if self.is_greenluma_path_valid:
+                applist_dir = os.path.join(self.greenluma_path, 'NormalMode', 'AppList')
                 applist_file = os.path.join(applist_dir, f"{app_id}.txt")
                 if os.path.exists(applist_file):
                     result['components']['greenluma'] = True
@@ -297,10 +305,9 @@ class GameInstaller:
                     result['warnings'].append("AppID not found in GreenLuma AppList")
             
             # Check Steam config.vdf
-            steam_path = self.config.get('Paths', 'steam_path', fallback='')
-            if steam_path and os.path.isdir(steam_path):
+            if self.is_steam_path_valid:
                 from vdf_updater import get_existing_depot_keys
-                config_vdf_path = os.path.join(steam_path, 'config', 'config.vdf')
+                config_vdf_path = os.path.join(self.steam_path, 'config', 'config.vdf')
                 if os.path.exists(config_vdf_path):
                     existing_keys = get_existing_depot_keys(config_vdf_path, verbose=False)
                     if existing_keys:
@@ -309,8 +316,8 @@ class GameInstaller:
                         result['warnings'].append("No depot keys found in config.vdf")
             
             # Check manifests
-            if steam_path:
-                depotcache_path = os.path.join(steam_path, 'steamapps', 'depotcache')
+            if self.is_steam_path_valid:
+                depotcache_path = os.path.join(self.steam_path, 'steamapps', 'depotcache')
                 if os.path.isdir(depotcache_path):
                     manifest_count = len([f for f in os.listdir(depotcache_path) 
                                         if f.endswith('.manifest')])
@@ -320,8 +327,8 @@ class GameInstaller:
                         result['warnings'].append("No manifest files found in depotcache")
             
             # Check ACF file
-            if steam_path:
-                steamapps_path = os.path.join(steam_path, 'steamapps')
+            if self.is_steam_path_valid:
+                steamapps_path = os.path.join(self.steam_path, 'steamapps')
                 acf_file = os.path.join(steamapps_path, f"appmanifest_{app_id}.acf")
                 if os.path.exists(acf_file):
                     result['components']['acf'] = True
