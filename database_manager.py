@@ -16,7 +16,7 @@ class GameDatabaseManager:
     Handles AppIDs, depots, and their relationships with thread safety.
     """
     
-    def __init__(self, db_path: str = "supersexyssteam.db"):
+    def __init__(self, db_path: str = "supersexysteam.db"):
         """
         Initialize the database manager.
         

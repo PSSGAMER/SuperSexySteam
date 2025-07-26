@@ -151,7 +151,7 @@ def clear_all_data(config, verbose=True) -> Dict[str, any]:
         
         # Step 7: Clear database (do this last)
         try:
-            db_file = Path('supersexyssteam.db')
+            db_file = Path('supersexysteam.db')
             if db_file.exists():
                 db_file.unlink()
                 result['stats']['database_cleared'] = True
