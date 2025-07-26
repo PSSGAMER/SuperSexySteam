@@ -5,13 +5,12 @@
 # These files are critical for the Steam client to recognize games as "installed."
 
 import configparser
-import os
 import re
 import time
 import traceback
 from pathlib import Path
 from steam.client import SteamClient
-from typing import List, Dict
+from typing import List, Dict, Union
 
 class ManifestGenerator:
     """
@@ -257,19 +256,21 @@ class ManifestGenerator:
             traceback.print_exc()
 
 
-def generate_acf_for_appid(steam_path: str, app_id: str) -> bool:
+def generate_acf_for_appid(steam_path: Union[str, Path], app_id: str) -> bool:
     """
     Generate an ACF file for a single AppID.
     
     Args:
-        steam_path (str): Path to Steam installation directory
+        steam_path (Union[str, Path]): Path to Steam installation directory
         app_id (str): The Steam AppID to generate ACF for
         
     Returns:
         bool: True if successful, False otherwise
     """
     try:
-        steamapps_path = Path(steam_path) / 'steamapps'
+        steam_path_obj = Path(steam_path)
+        steamapps_path = steam_path_obj / 'steamapps'
+        
         if not steamapps_path.is_dir():
             print(f"[Error] The 'steamapps' directory could not be found at: {steamapps_path}")
             return False
@@ -277,7 +278,7 @@ def generate_acf_for_appid(steam_path: str, app_id: str) -> bool:
         print(f"[INFO] Generating ACF file for AppID {app_id}")
         
         # Remove any existing ACF file first
-        remove_acf_for_appid(steam_path, app_id)
+        remove_acf_for_appid(steam_path_obj, app_id)
         
         # Generate new ACF file
         generator = ManifestGenerator()
@@ -298,37 +299,39 @@ def generate_acf_for_appid(steam_path: str, app_id: str) -> bool:
         return False
 
 
-def remove_acf_for_appid(steam_path: str, app_id: str) -> bool:
+def remove_acf_for_appid(steam_path: Union[str, Path], app_id: str) -> bool:
     """
     Remove the ACF file for a specific AppID.
     
     Args:
-        steam_path (str): Path to Steam installation directory
+        steam_path (Union[str, Path]): Path to Steam installation directory
         app_id (str): The Steam AppID to remove ACF for
         
     Returns:
         bool: True if successful or file doesn't exist, False on error
     """
     try:
-        steamapps_path = Path(steam_path) / 'steamapps'
+        steam_path_obj = Path(steam_path)
+        steamapps_path = steam_path_obj / 'steamapps'
+        
         if not steamapps_path.is_dir():
             print(f"[Error] The 'steamapps' directory could not be found at: {steamapps_path}")
             return False
         
         # Find and remove the ACF file
-        acf_pattern = f"appmanifest_{app_id}.acf"
-        acf_path = steamapps_path / acf_pattern
+        acf_filename = f"appmanifest_{app_id}.acf"
+        acf_path = steamapps_path / acf_filename
         
         if acf_path.exists():
             try:
                 acf_path.unlink()
-                print(f"[INFO] Removed ACF file: {acf_pattern}")
+                print(f"[INFO] Removed ACF file: {acf_filename}")
                 return True
             except Exception as e:
-                print(f"[Error] Failed to remove ACF file {acf_pattern}: {e}")
+                print(f"[Error] Failed to remove ACF file {acf_filename}: {e}")
                 return False
         else:
-            print(f"[INFO] ACF file not found for AppID {app_id}: {acf_pattern}")
+            print(f"[INFO] ACF file not found for AppID {app_id}: {acf_filename}")
             return True  # Not existing is considered success for removal
             
     except Exception as e:
@@ -336,12 +339,12 @@ def remove_acf_for_appid(steam_path: str, app_id: str) -> bool:
         return False
 
 
-def remove_all_tracked_acf_files(steam_path: str, tracked_appids: List[str]) -> Dict[str, int]:
+def remove_all_tracked_acf_files(steam_path: Union[str, Path], tracked_appids: List[str]) -> Dict[str, int]:
     """
     Remove ACF files for all tracked AppIDs.
     
     Args:
-        steam_path (str): Path to Steam installation directory
+        steam_path (Union[str, Path]): Path to Steam installation directory
         tracked_appids (List[str]): List of AppIDs to remove ACF files for
         
     Returns:
@@ -350,22 +353,24 @@ def remove_all_tracked_acf_files(steam_path: str, tracked_appids: List[str]) -> 
     stats = {'removed_count': 0}
     
     try:
-        steamapps_path = Path(steam_path) / 'steamapps'
+        steam_path_obj = Path(steam_path)
+        steamapps_path = steam_path_obj / 'steamapps'
+        
         if not steamapps_path.is_dir():
             print(f"[Error] The 'steamapps' directory could not be found at: {steamapps_path}")
             return stats
         
         for app_id in tracked_appids:
-            acf_pattern = f"appmanifest_{app_id}.acf"
-            acf_path = steamapps_path / acf_pattern
+            acf_filename = f"appmanifest_{app_id}.acf"
+            acf_path = steamapps_path / acf_filename
             
             if acf_path.exists():
                 try:
                     acf_path.unlink()
                     stats['removed_count'] += 1
-                    print(f"[INFO] Removed ACF file: {acf_pattern}")
+                    print(f"[INFO] Removed ACF file: {acf_filename}")
                 except Exception as e:
-                    print(f"[Error] Failed to remove ACF file {acf_pattern}: {e}")
+                    print(f"[Error] Failed to remove ACF file {acf_filename}: {e}")
         
         print(f"[INFO] ACF cleanup complete: {stats['removed_count']} files removed")
             

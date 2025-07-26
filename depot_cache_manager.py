@@ -4,9 +4,8 @@
 # Handles copying manifest files from data folders to Steam's depot cache
 # and removing them during uninstallation.
 
-import os
+from pathlib import Path
 import shutil
-import glob
 from typing import Dict, List, Optional
 
 
@@ -25,33 +24,35 @@ def copy_manifests_for_appid(steam_path: str, app_id: str, data_folder: str) -> 
     stats = {'copied_count': 0, 'skipped_count': 0}
     
     try:
+        # Convert to Path objects
+        steam_path_obj = Path(steam_path)
+        data_folder_obj = Path(data_folder)
+        
         # Construct depot cache path
-        depot_cache_path = os.path.join(steam_path, 'depotcache')
-        if not os.path.exists(depot_cache_path):
+        depot_cache_path = steam_path_obj / 'depotcache'
+        if not depot_cache_path.exists():
             try:
-                os.makedirs(depot_cache_path, exist_ok=True)
+                depot_cache_path.mkdir(parents=True, exist_ok=True)
                 print(f"[INFO] Created depot cache directory: {depot_cache_path}")
             except Exception as e:
                 print(f"[ERROR] Failed to create depot cache directory: {e}")
                 return stats
         
         # Find all manifest files in the data folder
-        manifest_pattern = os.path.join(data_folder, "*.manifest")
-        manifest_files = glob.glob(manifest_pattern)
+        manifest_files = list(data_folder_obj.glob("*.manifest"))
         
         if not manifest_files:
-            print(f"[INFO] No manifest files found for AppID {app_id} in {data_folder}")
+            print(f"[INFO] No manifest files found for AppID {app_id} in {data_folder_obj}")
             return stats
         
         # Copy each manifest file
         for manifest_file in manifest_files:
             try:
-                filename = os.path.basename(manifest_file)
-                destination = os.path.join(depot_cache_path, filename)
+                destination = depot_cache_path / manifest_file.name
                 
                 # Check if file already exists and is identical
-                if os.path.exists(destination):
-                    if os.path.getsize(manifest_file) == os.path.getsize(destination):
+                if destination.exists():
+                    if manifest_file.stat().st_size == destination.stat().st_size:
                         # Files are same size, assume they're identical
                         stats['skipped_count'] += 1
                         continue
@@ -59,10 +60,10 @@ def copy_manifests_for_appid(steam_path: str, app_id: str, data_folder: str) -> 
                 # Copy the file
                 shutil.copy2(manifest_file, destination)
                 stats['copied_count'] += 1
-                print(f"[INFO] Copied manifest: {filename}")
+                print(f"[INFO] Copied manifest: {manifest_file.name}")
                 
             except Exception as e:
-                print(f"[ERROR] Failed to copy manifest {os.path.basename(manifest_file)}: {e}")
+                print(f"[ERROR] Failed to copy manifest {manifest_file.name}: {e}")
         
         print(f"[INFO] Depot cache update complete for AppID {app_id}: {stats['copied_count']} copied, {stats['skipped_count']} skipped")
         
@@ -89,9 +90,12 @@ def remove_manifests_for_appid(steam_path: str, app_id: str) -> Dict[str, int]:
     stats = {'removed_count': 0}
     
     try:
+        # Convert to Path object
+        steam_path_obj = Path(steam_path)
+        
         # Construct depot cache path
-        depot_cache_path = os.path.join(steam_path, 'depotcache')
-        if not os.path.exists(depot_cache_path):
+        depot_cache_path = steam_path_obj / 'depotcache'
+        if not depot_cache_path.exists():
             print(f"[INFO] Depot cache directory does not exist: {depot_cache_path}")
             return stats
         
@@ -100,33 +104,30 @@ def remove_manifests_for_appid(steam_path: str, app_id: str) -> Dict[str, int]:
         # In a production system, you'd want to track this more precisely
         
         # Find all manifest files in depot cache
-        manifest_pattern = os.path.join(depot_cache_path, "*.manifest")
-        manifest_files = glob.glob(manifest_pattern)
+        manifest_files = list(depot_cache_path.glob("*.manifest"))
         
         if not manifest_files:
             print(f"[INFO] No manifest files found in depot cache")
             return stats
         
         # Check if there's a corresponding data folder to match files
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        data_folder = os.path.join(script_dir, "data", app_id)
+        script_dir = Path(__file__).parent
+        data_folder = script_dir / "data" / app_id
         
-        if os.path.exists(data_folder):
+        if data_folder.exists():
             # Match manifest files from data folder
-            data_manifest_pattern = os.path.join(data_folder, "*.manifest")
-            data_manifest_files = glob.glob(data_manifest_pattern)
-            data_manifest_names = [os.path.basename(f) for f in data_manifest_files]
+            data_manifest_files = list(data_folder.glob("*.manifest"))
+            data_manifest_names = [f.name for f in data_manifest_files]
             
             # Remove matching files from depot cache
             for manifest_file in manifest_files:
-                filename = os.path.basename(manifest_file)
-                if filename in data_manifest_names:
+                if manifest_file.name in data_manifest_names:
                     try:
-                        os.remove(manifest_file)
+                        manifest_file.unlink()
                         stats['removed_count'] += 1
-                        print(f"[INFO] Removed manifest: {filename}")
+                        print(f"[INFO] Removed manifest: {manifest_file.name}")
                     except Exception as e:
-                        print(f"[ERROR] Failed to remove manifest {filename}: {e}")
+                        print(f"[ERROR] Failed to remove manifest {manifest_file.name}: {e}")
         else:
             print(f"[WARNING] Data folder not found for AppID {app_id}, cannot match specific manifest files")
         
@@ -156,19 +157,21 @@ def get_depot_cache_info(steam_path: str) -> Dict[str, any]:
     }
     
     try:
-        depot_cache_path = os.path.join(steam_path, 'depotcache')
-        info['path'] = depot_cache_path
-        info['exists'] = os.path.exists(depot_cache_path)
+        # Convert to Path object
+        steam_path_obj = Path(steam_path)
+        depot_cache_path = steam_path_obj / 'depotcache'
+        
+        info['path'] = str(depot_cache_path)
+        info['exists'] = depot_cache_path.exists()
         
         if info['exists']:
-            manifest_pattern = os.path.join(depot_cache_path, "*.manifest")
-            manifest_files = glob.glob(manifest_pattern)
+            manifest_files = list(depot_cache_path.glob("*.manifest"))
             info['manifest_count'] = len(manifest_files)
             
             total_size = 0
             for manifest_file in manifest_files:
                 try:
-                    total_size += os.path.getsize(manifest_file)
+                    total_size += manifest_file.stat().st_size
                 except Exception:
                     pass  # Skip files we can't read
             
@@ -193,15 +196,17 @@ def clear_all_depot_cache(steam_path: str) -> Dict[str, int]:
     stats = {'removed_count': 0}
     
     try:
+        # Convert to Path object
+        steam_path_obj = Path(steam_path)
+        
         # Construct depot cache path
-        depot_cache_path = os.path.join(steam_path, 'depotcache')
-        if not os.path.exists(depot_cache_path):
+        depot_cache_path = steam_path_obj / 'depotcache'
+        if not depot_cache_path.exists():
             print(f"[INFO] Depot cache directory does not exist: {depot_cache_path}")
             return stats
         
         # Find all manifest files in depot cache
-        manifest_pattern = os.path.join(depot_cache_path, "*.manifest")
-        manifest_files = glob.glob(manifest_pattern)
+        manifest_files = list(depot_cache_path.glob("*.manifest"))
         
         if not manifest_files:
             print(f"[INFO] No manifest files found in depot cache")
@@ -210,12 +215,11 @@ def clear_all_depot_cache(steam_path: str) -> Dict[str, int]:
         # Remove all manifest files
         for manifest_file in manifest_files:
             try:
-                filename = os.path.basename(manifest_file)
-                os.remove(manifest_file)
+                manifest_file.unlink()
                 stats['removed_count'] += 1
-                print(f"[INFO] Removed manifest: {filename}")
+                print(f"[INFO] Removed manifest: {manifest_file.name}")
             except Exception as e:
-                print(f"[ERROR] Failed to remove manifest {os.path.basename(manifest_file)}: {e}")
+                print(f"[ERROR] Failed to remove manifest {manifest_file.name}: {e}")
         
         print(f"[INFO] Depot cache cleanup complete: {stats['removed_count']} files removed")
         

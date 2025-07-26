@@ -23,7 +23,7 @@
 
 import customtkinter as ctk
 from tkinterdnd2 import DND_FILES, TkinterDnD
-import os
+from pathlib import Path
 import shutil
 import re
 import configparser
@@ -229,17 +229,18 @@ def run_steam_with_dll_injector(config):
             result['errors'].append("GreenLuma path not configured")
             return result
         
-        # Construct path to DLLInjector.exe
-        dll_injector_path = os.path.join(greenluma_path, 'NormalMode', 'DLLInjector.exe')
+        # Construct path to DLLInjector.exe using pathlib
+        greenluma_dir = Path(greenluma_path)
+        dll_injector_path = greenluma_dir / 'NormalMode' / 'DLLInjector.exe'
         
-        if not os.path.exists(dll_injector_path):
+        if not dll_injector_path.exists():
             result['errors'].append(f"DLLInjector.exe not found at: {dll_injector_path}")
             return result
         
         print(f"[INFO] Starting Steam via DLLInjector: {dll_injector_path}")
         
         # Start DLLInjector.exe (which will launch Steam with the DLL injected)
-        subprocess.Popen([dll_injector_path], cwd=os.path.dirname(dll_injector_path))
+        subprocess.Popen([str(dll_injector_path)], cwd=str(dll_injector_path.parent))
         
         result['success'] = True
         print("[INFO] Steam started successfully via DLLInjector")
@@ -390,15 +391,15 @@ class App(TkinterDnD.Tk):
         
         # --- Window Icon ---
         try:
-            icon_path = os.path.join(os.path.dirname(__file__), "icon.ico")
-            if os.path.exists(icon_path):
-                self.wm_iconbitmap(icon_path)
+            icon_path = Path(__file__).parent / "icon.ico"
+            if icon_path.exists():
+                self.wm_iconbitmap(str(icon_path))
         except Exception as e:
             print(f"[WARNING] Failed to load window icon: {e}")
 
         # --- Header Image ---
         try:
-            header_path = os.path.join(os.path.dirname(__file__), "header.png")
+            header_path = Path(__file__).parent / "header.png"
             header_pil_image = Image.open(header_path)
 
             # Resize the image programmatically to prevent a large image from breaking the layout.
@@ -539,7 +540,7 @@ class App(TkinterDnD.Tk):
         self.update_status("Starting comprehensive data cleanup...", "warning")
         
         try:
-            result = clear_all_data(self.config, verbose=True)
+            result = clear_all_data(self.app_config, verbose=True)
             
             if result['success']:
                 stats = result['stats']
@@ -597,7 +598,7 @@ class App(TkinterDnD.Tk):
         self.update_status(f"Uninstalling AppID {app_id}...", "warning")
         
         try:
-            result = uninstall_specific_appid(self.config, app_id, verbose=True)
+            result = uninstall_specific_appid(self.app_config, app_id, verbose=True)
             
             if result['success']:
                 stats = result['stats']
@@ -716,9 +717,9 @@ class App(TkinterDnD.Tk):
         
         # Try to set icon
         try:
-            icon_path = os.path.join(os.path.dirname(__file__), "icon.ico")
-            if os.path.exists(icon_path):
-                search_window.wm_iconbitmap(icon_path)
+            icon_path = Path(__file__).parent / "icon.ico"
+            if icon_path.exists():
+                search_window.wm_iconbitmap(str(icon_path))
         except Exception:
             pass
         
@@ -883,16 +884,15 @@ class App(TkinterDnD.Tk):
             return
 
         # Extract AppID from the filename and validate it's a number.
-        lua_path = lua_files[0]
-        lua_filename = os.path.basename(lua_path)
-        app_id = os.path.splitext(lua_filename)[0]
+        lua_path = Path(lua_files[0])
+        app_id = lua_path.stem
         if not app_id.isdigit():
-            self.update_status(f"Invalid Lua filename: '{lua_filename}'. Name must be a numeric AppID.", "error")
+            self.update_status(f"Invalid Lua filename: '{lua_path.name}'. Name must be a numeric AppID.", "error")
             return
 
-        # Prepare the destination directory.
-        script_directory = os.path.dirname(os.path.abspath(__file__))
-        destination_directory = os.path.join(script_directory, "data", app_id)
+        # Prepare the destination directory
+        script_directory = Path(__file__).parent
+        destination_directory = script_directory / "data" / app_id
 
         # Check if this is an update or new installation
         is_update = self.db.is_appid_exists(app_id)
@@ -918,31 +918,31 @@ class App(TkinterDnD.Tk):
             self.update_status(f"Installing new AppID {app_id}...", "info")
 
         # If a folder already exists, remove it to ensure a clean slate.
-        if os.path.isdir(destination_directory):
+        if destination_directory.is_dir():
             try:
                 shutil.rmtree(destination_directory)
             except OSError as e:
                 self.update_status(f"Error removing old folder: {e}", "error")
                 return
 
-        os.makedirs(destination_directory, exist_ok=True)
+        destination_directory.mkdir(parents=True, exist_ok=True)
 
         # Copy all valid files to the destination.
         copied_files_count = 0
-        for path in file_paths:
-            if path.lower().endswith(('.lua', '.manifest')):
+        for path_str in file_paths:
+            path = Path(path_str)
+            if path.suffix.lower() in ('.lua', '.manifest'):
                 try:
-                    filename = os.path.basename(path)
-                    shutil.copy2(path, os.path.join(destination_directory, filename))
+                    shutil.copy2(path, destination_directory / path.name)
                     copied_files_count += 1
                 except Exception as e:
-                    self.update_status(f"Error copying '{os.path.basename(path)}': {e}", "error")
+                    self.update_status(f"Error copying '{path.name}': {e}", "error")
                     shutil.rmtree(destination_directory, ignore_errors=True)  # Clean up on failure.
                     return
 
         # Now install the game using the new installer
         try:
-            install_result = self.game_installer.install_game(app_id, destination_directory)
+            install_result = self.game_installer.install_game(app_id, str(destination_directory))
             
             if install_result['success']:
                 action_verb = "Updated" if is_update else "Installed"
@@ -965,7 +965,7 @@ class App(TkinterDnD.Tk):
                     print(f"[ERROR] {error}")
                 
                 # Clean up the data folder
-                if os.path.exists(destination_directory):
+                if destination_directory.exists():
                     shutil.rmtree(destination_directory, ignore_errors=True)
                 
         except Exception as e:
@@ -973,7 +973,7 @@ class App(TkinterDnD.Tk):
             print(f"[ERROR] Installation error for AppID {app_id}: {e}")
             
             # Clean up the data folder
-            if os.path.exists(destination_directory):
+            if destination_directory.exists():
                 shutil.rmtree(destination_directory, ignore_errors=True)
 
     def on_installed_games_click(self):
@@ -999,9 +999,9 @@ class App(TkinterDnD.Tk):
         
         # Try to set icon
         try:
-            icon_path = os.path.join(os.path.dirname(__file__), "icon.ico")
-            if os.path.exists(icon_path):
-                games_window.wm_iconbitmap(icon_path)
+            icon_path = Path(__file__).parent / "icon.ico"
+            if icon_path.exists():
+                games_window.wm_iconbitmap(str(icon_path))
         except Exception:
             pass
         
@@ -1131,7 +1131,7 @@ class App(TkinterDnD.Tk):
         
         try:
             # Use the existing uninstall logic
-            result = uninstall_specific_appid(self.config, app_id, verbose=True)
+            result = uninstall_specific_appid(self.app_config, app_id, verbose=True)
             
             if result['success']:
                 status_label.configure(text=f"Successfully uninstalled {game_name}", text_color=Theme.STATUS_SUCCESS)
@@ -1157,11 +1157,11 @@ if __name__ == "__main__":
     The main execution block. It handles the initial configuration setup
     and launches the main application window.
     """
-    config_file = 'config.ini'
+    config_file = Path('config.ini')
     config = configparser.ConfigParser()
 
     # Check if the config file exists. If not, run the first-time setup.
-    if not os.path.exists(config_file):
+    if not config_file.exists():
         setup_root = ctk.CTk()
         setup_root.withdraw()
 
@@ -1176,17 +1176,17 @@ if __name__ == "__main__":
         gl_path = gl_dialog.get_input()
         if gl_path is None: sys.exit()
         if gl_path == "":
-            base_dir = os.path.dirname(os.path.abspath(__file__))
-            gl_path = os.path.join(base_dir, "GreenLuma")
-            os.makedirs(gl_path, exist_ok=True)
+            base_dir = Path(__file__).parent
+            gl_path = base_dir / "GreenLuma"
+            gl_path.mkdir(exist_ok=True)
 
-        config['Paths'] = {'steam_path': steam_path, 'greenluma_path': gl_path}
+        config['Paths'] = {'steam_path': steam_path, 'greenluma_path': str(gl_path)}
         
-        with open(config_file, 'w') as f:
+        with config_file.open('w') as f:
             config.write(f)
         
         # Configure the GreenLuma DLLInjector.ini with the paths
-        configure_greenluma_injector(steam_path, gl_path)
+        configure_greenluma_injector(steam_path, str(gl_path))
         
         setup_root.destroy()
 

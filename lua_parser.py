@@ -4,7 +4,7 @@
 # This script scans the 'data' directory for .lua files and extracts depot IDs
 # and their corresponding decryption keys.
 
-import os
+from pathlib import Path
 import re
 import sys
 
@@ -19,16 +19,18 @@ def parse_lua_for_depots(lua_path):
     DepotKey, properly distinguishing between the AppID (from filename) and actual DepotID.
 
     Args:
-        lua_path (str): The full path to the .lua file to be parsed.
+        lua_path (str or Path): The full path to the .lua file to be parsed.
 
     Returns:
         list: A list of dictionaries. Each dictionary represents a found depot
               and has the keys 'depot_id' and 'depot_key'. Returns an empty
               list if the file is not found or an error occurs.
     """
+    # Convert to Path object if needed
+    lua_path = Path(lua_path)
+    
     # Extract AppID from filename to exclude it from depot results
-    filename = os.path.basename(lua_path)
-    app_id = os.path.splitext(filename)[0]
+    app_id = lua_path.stem
     
     # Multiple regex patterns to handle different Lua formats
     patterns = [
@@ -41,7 +43,7 @@ def parse_lua_for_depots(lua_path):
 
     extracted_depots = []
     try:
-        with open(lua_path, 'r', encoding='utf-8') as f:
+        with lua_path.open('r', encoding='utf-8') as f:
             for line in f:
                 # Try each pattern
                 for pattern in patterns:
@@ -62,7 +64,7 @@ def parse_lua_for_depots(lua_path):
     except FileNotFoundError:
         print(f"  [Warning] Could not find file during parsing: {lua_path}")
     except Exception as e:
-        print(f"  [Error] Failed to read or parse {os.path.basename(lua_path)}: {e}")
+        print(f"  [Error] Failed to read or parse {lua_path.name}: {e}")
 
     return extracted_depots
 
@@ -76,15 +78,16 @@ def parse_lua_for_all_depots(lua_path):
     numeric IDs as DepotIDs, providing accurate categorization.
 
     Args:
-        lua_path (str): The full path to the .lua file to be parsed.
+        lua_path (str or Path): The full path to the .lua file to be parsed.
 
     Returns:
         dict: A dictionary with 'app_id' (from filename) and 'depots' (list of depot dicts).
               Returns empty data if the file is not found or an error occurs.
     """
+    lua_path = Path(lua_path)
+    
     # Extract AppID from filename
-    filename = os.path.basename(lua_path)
-    app_id = os.path.splitext(filename)[0]
+    app_id = lua_path.stem
     
     result = {
         'app_id': app_id,
@@ -93,7 +96,7 @@ def parse_lua_for_all_depots(lua_path):
     
     # Validate that filename is a numeric AppID
     if not app_id.isdigit():
-        print(f"  [Warning] Filename '{filename}' does not contain a valid numeric AppID")
+        print(f"  [Warning] Filename '{lua_path.name}' does not contain a valid numeric AppID")
         return result
 
     # Multiple regex patterns to handle different Lua formats
@@ -113,7 +116,7 @@ def parse_lua_for_all_depots(lua_path):
 
     extracted_depots = []
     try:
-        with open(lua_path, 'r', encoding='utf-8') as f:
+        with lua_path.open('r', encoding='utf-8') as f:
             for line in f:
                 # Ignore comment lines to avoid parsing them.
                 if line.strip().startswith('--'):
@@ -149,7 +152,7 @@ def parse_lua_for_all_depots(lua_path):
     except FileNotFoundError:
         print(f"  [Warning] Could not find file during parsing: {lua_path}")
     except Exception as e:
-        print(f"  [Error] Failed to read or parse {os.path.basename(lua_path)}: {e}")
+        print(f"  [Error] Failed to read or parse {lua_path.name}: {e}")
 
     result['depots'] = extracted_depots
     return result
@@ -161,7 +164,7 @@ def parse_all_lua_files(data_dir='data', verbose=True):
     information from them.
 
     Args:
-        data_dir (str): The directory to scan for .lua files. Defaults to 'data'.
+        data_dir (str or Path): The directory to scan for .lua files. Defaults to 'data'.
         verbose (bool): Whether to print progress information. Defaults to True.
 
     Returns:
@@ -169,9 +172,10 @@ def parse_all_lua_files(data_dir='data', verbose=True):
               and has the keys 'depot_id' and 'depot_key'. Returns an empty
               list if no data directory is found or no .lua files exist.
     """
+    data_dir = Path(data_dir)
     all_depots = []
     
-    if not os.path.isdir(data_dir):
+    if not data_dir.is_dir():
         if verbose:
             print(f"[Warning] Data directory '{data_dir}' not found.")
         return all_depots
@@ -181,17 +185,14 @@ def parse_all_lua_files(data_dir='data', verbose=True):
         print(f"Scanning '{data_dir}' directory for .lua files...")
     
     # Walk through all subdirectories in the data folder
-    for root, dirs, files in os.walk(data_dir):
-        for filename in files:
-            if filename.lower().endswith('.lua'):
-                lua_path = os.path.join(root, filename)
-                app_id = os.path.splitext(filename)[0]
-                if verbose:
-                    print(f"  Processing {filename} (AppID: {app_id})")
-                
-                depots = parse_lua_for_depots(lua_path)
-                all_depots.extend(depots)
-                lua_files_found += 1
+    for lua_path in data_dir.rglob('*.lua'):
+        app_id = lua_path.stem
+        if verbose:
+            print(f"  Processing {lua_path.name} (AppID: {app_id})")
+        
+        depots = parse_lua_for_depots(lua_path)
+        all_depots.extend(depots)
+        lua_files_found += 1
     
     if verbose:
         print(f"Found {lua_files_found} .lua file(s) containing {len(all_depots)} depot keys total.")
@@ -205,16 +206,18 @@ def parse_all_lua_files_structured(data_dir='data', verbose=True):
     information, returning structured data with AppIDs and their associated depots.
 
     Args:
-        data_dir (str): The directory to scan for .lua files. Defaults to 'data'.
+        data_dir (str or Path): The directory to scan for .lua files. Defaults to 'data'.
         verbose (bool): Whether to print progress information. Defaults to True.
 
     Returns:
         list: A list of dictionaries. Each dictionary has 'app_id' and 'depots' keys.
               Returns empty list if no data directory is found or no .lua files exist.
     """
+    # Convert to Path object
+    data_dir = Path(data_dir)
     all_apps = []
     
-    if not os.path.isdir(data_dir):
+    if not data_dir.is_dir():
         if verbose:
             print(f"[Warning] Data directory '{data_dir}' not found.")
         return all_apps
@@ -224,19 +227,15 @@ def parse_all_lua_files_structured(data_dir='data', verbose=True):
         print(f"Scanning '{data_dir}' directory for .lua files...")
     
     # Walk through all subdirectories in the data folder
-    for root, dirs, files in os.walk(data_dir):
-        for filename in files:
-            if filename.lower().endswith('.lua'):
-                lua_path = os.path.join(root, filename)
-                
-                # Use the improved function that properly categorizes AppID vs DepotID
-                app_data = parse_lua_for_all_depots(lua_path)
-                
-                if verbose:
-                    print(f"  Processing {filename} (AppID: {app_data['app_id']}) - Found {len(app_data['depots'])} depots")
-                
-                all_apps.append(app_data)
-                lua_files_found += 1
+    for lua_path in data_dir.rglob('*.lua'):
+        # Use the improved function that properly categorizes AppID vs DepotID
+        app_data = parse_lua_for_all_depots(lua_path)
+        
+        if verbose:
+            print(f"  Processing {lua_path.name} (AppID: {app_data['app_id']}) - Found {len(app_data['depots'])} depots")
+        
+        all_apps.append(app_data)
+        lua_files_found += 1
     
     total_depots = sum(len(app['depots']) for app in all_apps)
     if verbose:
@@ -273,9 +272,9 @@ def main():
     print("--- lua_parser.py: Parsing .lua files for depot data ---")
     
     # Parse command line arguments
-    data_dir = 'data'
+    data_dir = Path('data')
     if len(sys.argv) > 1:
-        data_dir = sys.argv[1]
+        data_dir = Path(sys.argv[1])
     
     # Parse all lua files
     all_depots = parse_all_lua_files(data_dir)

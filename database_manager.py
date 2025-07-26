@@ -5,7 +5,7 @@
 # tracking installation status, and providing data for the workflow modules.
 
 import sqlite3
-import os
+from pathlib import Path
 import threading
 from typing import List, Dict, Optional, Tuple
 
@@ -23,7 +23,7 @@ class GameDatabaseManager:
         Args:
             db_path (str): Path to the SQLite database file.
         """
-        self.db_path = db_path
+        self.db_path = Path(db_path)
         self._lock = threading.Lock()
         self._init_database()
     
@@ -77,7 +77,7 @@ class GameDatabaseManager:
     def _get_connection(self):
         """Get a database connection with proper configuration and corruption checking."""
         try:
-            conn = sqlite3.connect(self.db_path, timeout=30.0)
+            conn = sqlite3.connect(str(self.db_path), timeout=30.0)
             
             # Test database integrity
             cursor = conn.cursor()
@@ -103,14 +103,13 @@ class GameDatabaseManager:
     
     def _handle_database_corruption(self):
         """Handle database corruption by creating a backup and rebuilding."""
-        import shutil
         from datetime import datetime
         import time
         
         # Create backup of corrupted database
-        backup_path = f"{self.db_path}.corrupted_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        backup_path = self.db_path.with_suffix(f".corrupted_{datetime.now().strftime('%Y%m%d_%H%M%S')}")
         try:
-            if os.path.exists(self.db_path):
+            if self.db_path.exists():
                 # Try to close any existing connections first
                 time.sleep(0.1)  # Brief pause to allow connections to close
                 
@@ -118,7 +117,7 @@ class GameDatabaseManager:
                 max_retries = 3
                 for attempt in range(max_retries):
                     try:
-                        shutil.copy2(self.db_path, backup_path)
+                        backup_path.write_bytes(self.db_path.read_bytes())
                         print(f"[Info] Corrupted database backed up to: {backup_path}")
                         break
                     except (OSError, IOError) as e:
@@ -130,7 +129,7 @@ class GameDatabaseManager:
                 
                 # Try to remove corrupted file
                 try:
-                    os.remove(self.db_path)
+                    self.db_path.unlink()
                 except (OSError, IOError) as e:
                     print(f"[Warning] Could not remove corrupted database: {e}")
                     # Continue anyway, will overwrite
@@ -148,7 +147,7 @@ class GameDatabaseManager:
         
         # Return new connection
         try:
-            conn = sqlite3.connect(self.db_path, timeout=30.0)
+            conn = sqlite3.connect(str(self.db_path), timeout=30.0)
             conn.execute('PRAGMA foreign_keys=ON')
             conn.execute('PRAGMA journal_mode=WAL')
             conn.execute('PRAGMA synchronous=NORMAL')
