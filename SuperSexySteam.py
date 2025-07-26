@@ -144,7 +144,7 @@ def is_steam_running():
 
 def terminate_steam():
     """
-    Terminate all Steam.exe processes.
+    Enhanced terminate_steam function with better process handling.
     
     Returns:
         dict: Result dictionary with success status and details.
@@ -166,39 +166,44 @@ def terminate_steam():
             print("[INFO] No Steam processes found to terminate")
             return result
         
-        # Terminate all Steam processes
+        # First, try graceful termination
         for process in steam_processes:
             try:
-                print(f"[INFO] Terminating Steam process (PID: {process.pid})")
+                print(f"[INFO] Gracefully terminating Steam process (PID: {process.pid})")
                 process.terminate()
                 result['terminated_processes'] += 1
-            except psutil.NoSuchProcess:
-                # Process already terminated
+            except (psutil.NoSuchProcess, psutil.AccessDenied) as e:
+                print(f"[WARNING] Could not terminate process (PID: {process.pid}): {e}")
                 continue
             except Exception as e:
                 result['errors'].append(f"Failed to terminate Steam process (PID: {process.pid}): {e}")
         
-        # Wait for processes to terminate gracefully
-        time.sleep(2)
+        # Wait a short time for graceful termination
+        time.sleep(1)
         
-        # Force kill any remaining Steam processes
+        # Force kill any remaining processes
+        remaining_processes = []
         for process in steam_processes:
             try:
                 if process.is_running():
+                    remaining_processes.append(process)
+            except psutil.NoSuchProcess:
+                continue
+        
+        if remaining_processes:
+            print(f"[INFO] Force killing {len(remaining_processes)} remaining Steam processes")
+            for process in remaining_processes:
+                try:
                     print(f"[INFO] Force killing Steam process (PID: {process.pid})")
                     process.kill()
-            except psutil.NoSuchProcess:
-                # Process already terminated
-                continue
-            except Exception as e:
-                result['errors'].append(f"Failed to force kill Steam process (PID: {process.pid}): {e}")
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    continue
+                except Exception as e:
+                    result['errors'].append(f"Failed to force kill Steam process (PID: {process.pid}): {e}")
         
-        # Final verification
-        if not is_steam_running():
-            result['success'] = True
-            print(f"[INFO] Successfully terminated {result['terminated_processes']} Steam process(es)")
-        else:
-            result['errors'].append("Some Steam processes may still be running")
+        # Final verification will be done by the polling function
+        result['success'] = True
+        print(f"[INFO] Termination commands sent to {result['terminated_processes']} Steam process(es)")
             
     except Exception as e:
         result['errors'].append(f"Unexpected error while terminating Steam: {e}")
@@ -635,6 +640,32 @@ class App(TkinterDnD.Tk):
             self.update_status(f"Error during uninstallation: {e}", "error")
             print(f"[ERROR] Failed to uninstall AppID {app_id}: {e}")
 
+    def wait_for_steam_termination(self, max_wait_seconds=15, check_interval=0.5):
+        """
+        Wait for Steam processes to fully terminate with active polling.
+        
+        Args:
+            max_wait_seconds (int): Maximum time to wait for termination
+            check_interval (float): How often to check (in seconds)
+            
+        Returns:
+            bool: True if Steam fully terminated, False if timeout occurred
+        """
+        start_time = time.time()
+        
+        while time.time() - start_time < max_wait_seconds:
+            if not is_steam_running():
+                return True
+            
+            # Update GUI to show progress
+            elapsed = int(time.time() - start_time)
+            self.update_status(f"Waiting for Steam termination... ({elapsed}s)", "info")
+            self.update_idletasks()
+            
+            time.sleep(check_interval)
+        
+        return False
+
     def terminate_steam_startup(self):
         """
         Terminate Steam processes at application startup.
@@ -675,10 +706,11 @@ class App(TkinterDnD.Tk):
                     self.update_status(f"Failed to terminate Steam: {error_msg}", "error")
                     return
                 
-                # Wait a moment for processes to fully terminate
+                # Wait for processes to terminate with active polling
                 self.update_status("Waiting for Steam to fully terminate...", "info")
-                self.update_idletasks()
-                time.sleep(3)
+                if not self.wait_for_steam_termination():
+                    self.update_status("Warning: Steam may not have fully terminated", "warning")
+                    # Still proceed, but warn the user
             
             # Launch Steam via DLLInjector
             self.update_status("Launching Steam via DLLInjector...", "info")

@@ -30,7 +30,7 @@ class ManifestGenerator:
         Ensures the Steam client is logged in before making API calls.
 
         It attempts to log in anonymously. If already logged in, it returns
-        True immediately. It includes a short delay and a status check to
+        True immediately. It uses a polling mechanism with timeout to
         ensure the connection is fully established before proceeding.
 
         Returns:
@@ -45,19 +45,22 @@ class ManifestGenerator:
             result = self.client.anonymous_login()
             print(f"Login result: {result}")
             
-            # Wait a moment for the connection to stabilize. This is crucial,
-            # as the login call can return before the session is fully ready.
-            time.sleep(2)
+            # Poll the logged_on status with a timeout instead of fixed sleep
+            timeout = 10.0  # 10 seconds timeout
+            poll_interval = 0.2  # Check every 200ms
+            start_time = time.time()
             
-            # Explicitly check the logged_on status of the client.
-            if self.client.logged_on:
-                self._logged_on = True
-                print("Successfully logged in anonymously.")
-                print(f"Steam ID: {self.client.steam_id}")
-                return True
-            else:
-                print("Login appeared to succeed but client is not logged on.")
-                return False
+            while time.time() - start_time < timeout:
+                if self.client.logged_on:
+                    self._logged_on = True
+                    print("Successfully logged in anonymously.")
+                    print(f"Steam ID: {self.client.steam_id}")
+                    return True
+                time.sleep(poll_interval)
+            
+            # If we reach here, we timed out waiting for login
+            print(f"Login timed out after {timeout} seconds - client is not logged on.")
+            return False
                 
         except Exception as e:
             print(f"Error: Failed to log into Steam: {e}")
