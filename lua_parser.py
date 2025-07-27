@@ -200,9 +200,8 @@ def parse_lua_for_depots(lua_path):
                     if args and len(args) >= 3:
                         depot_id, flag, depot_key = args[0], args[1], args[2]
                         
-                        # Validate depot_id is numeric, flag is 1, and has a non-empty key
-                        if (depot_id.isdigit() and flag == '1' and 
-                            depot_key.strip() and depot_id != app_id):
+                        # Validate depot_id is numeric and has a non-empty key
+                        if (depot_id.isdigit() and depot_key.strip() and depot_id != app_id):
                             extracted_depots.append({
                                 'depot_id': depot_id,
                                 'depot_key': depot_key
@@ -283,8 +282,8 @@ def parse_lua_for_all_depots(lua_path):
                             # Skip if this ID matches the AppID (from filename)
                             if depot_id.isdigit() and depot_id != app_id:
                                 depot_data = {'depot_id': depot_id}
-                                # Check if it has a key (usually 3rd argument when flag is 1)
-                                if (len(args) >= 3 and args[1] == '1' and args[2].strip()):
+                                # Check if it has a key (3rd argument)
+                                if (len(args) >= 3 and args[2].strip()):
                                     depot_data['depot_key'] = args[2]
                     
                     # Add or update depot data
