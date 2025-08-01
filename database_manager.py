@@ -10,17 +10,14 @@ from pathlib import Path
 import threading
 from typing import List, Dict, Optional, Tuple
 
-# Configure logging for this module
+# Configure logging
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
-
-# Create console handler with formatting
 if not logger.handlers:
-    console_handler = logging.StreamHandler()
-    console_handler.setLevel(logging.DEBUG)
-    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    console_handler.setFormatter(formatter)
-    logger.addHandler(console_handler)
+    handler = logging.StreamHandler()
+    formatter = logging.Formatter('[%(name)s] [%(levelname)s] %(message)s')
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+    logger.setLevel(logging.DEBUG)
 
 
 class GameDatabaseManager:
