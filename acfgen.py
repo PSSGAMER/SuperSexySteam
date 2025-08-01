@@ -481,11 +481,4 @@ def remove_all_tracked_acf_files(steam_path: Union[str, Path], tracked_appids: L
 
 
 if __name__ == "__main__":
-    """
-    Standard script entry point. Individual ACF generation functions are now
-    available via generate_acf_for_appid() and remove_acf_for_appid().
-    The new system generates ACFs automatically during real-time processing.
-    """
-    logger.info("acfgen.py - Individual ACF generation functions available")
-    logger.info("Use generate_acf_for_appid() and remove_acf_for_appid() functions")
-    logger.info("Legacy bulk generation has been removed in favor of real-time processing")
+    logger.info("Broken")

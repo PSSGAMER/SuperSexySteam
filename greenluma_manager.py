@@ -889,8 +889,4 @@ def main():
 
 
 if __name__ == "__main__":
-    """
-    Standard script entry point for standalone execution.
-    """
-    logger.info("Starting GreenLuma manager as standalone script")
     main()

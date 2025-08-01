@@ -25,6 +25,16 @@ from pathlib import Path
 import re
 from PIL import Image, ImageDraw
 import sys
+import logging
+
+# Configure logging
+logger = logging.getLogger(__name__)
+if not logger.handlers:
+    handler = logging.StreamHandler()
+    formatter = logging.Formatter('[%(asctime)s] [%(name)s] [%(levelname)s] %(message)s')
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+    logger.setLevel(logging.DEBUG)
 
 # Import our central brain module
 from app_logic import SuperSexySteamLogic
@@ -231,7 +241,7 @@ class App(TkinterDnD.Tk):
             if icon_path.exists():
                 self.wm_iconbitmap(str(icon_path))
         except Exception as e:
-            print(f"[WARNING] Failed to load window icon: {e}")
+            logger.warning(f"Failed to load window icon: {e}")
 
         # --- Header Image ---
         try:
@@ -403,7 +413,7 @@ class App(TkinterDnD.Tk):
             # Show any warnings
             if result['warnings']:
                 for warning in result['warnings']:
-                    print(f"[WARNING] {warning}")
+                    logger.warning(warning)
         else:
             error_msg = result.get('error', 'Installation failed')
             if 'errors' in result and result['errors']:
@@ -422,7 +432,7 @@ class App(TkinterDnD.Tk):
             
             if result['warnings']:
                 for warning in result['warnings']:
-                    print(f"[WARNING] {warning}")
+                    logger.warning(warning)
             
             # Update stats display
             self.update_database_stats()
@@ -447,7 +457,7 @@ class App(TkinterDnD.Tk):
             
             if result['warnings']:
                 for warning in result['warnings']:
-                    print(f"[WARNING] {warning}")
+                    logger.warning(warning)
             
             # Update stats display
             self.update_database_stats()
@@ -463,7 +473,7 @@ class App(TkinterDnD.Tk):
         if result['success']:
             # Show all messages
             for message in result['messages']:
-                print(f"[INFO] {message}")
+                logger.info(message)
             
             # Show final success message
             final_message = result['messages'][-1] if result['messages'] else "Steam launched successfully! 🚀"
@@ -472,7 +482,7 @@ class App(TkinterDnD.Tk):
             # Show warnings if any
             if result['warnings']:
                 for warning in result['warnings']:
-                    print(f"[WARNING] {warning}")
+                    logger.warning(warning)
         else:
             # Show error
             if result['errors']:
@@ -643,10 +653,11 @@ class App(TkinterDnD.Tk):
             self.clipboard_clear()
             self.clipboard_append(str(appid))
             status_label.configure(text=f"AppID {appid} copied to clipboard!", text_color=Theme.STATUS_SUCCESS)
-            print(f"[INFO] AppID {appid} copied to clipboard")
+            logger.info(f"AppID {appid} copied to clipboard")
         except Exception as e:
             status_label.configure(text=f"Failed to copy AppID: {str(e)}", text_color=Theme.STATUS_ERROR)
-            print(f"[ERROR] Failed to copy AppID {appid}: {e}")
+            logger.error(f"Failed to copy AppID {appid}: {e}")
+            logger.debug("Clipboard error details:", exc_info=True)
 
     # =============================================================================
     # --- INSTALLED GAMES WINDOW ---

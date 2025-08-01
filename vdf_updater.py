@@ -8,13 +8,23 @@ from pathlib import Path
 import shutil
 import sys
 import vdf
+import logging
+
+# Configure logging
+logger = logging.getLogger(__name__)
+if not logger.handlers:
+    handler = logging.StreamHandler()
+    formatter = logging.Formatter('[%(asctime)s] [%(name)s] [%(levelname)s] %(message)s')
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+    logger.setLevel(logging.DEBUG)
 
 
 # =============================================================================
 # --- VDF HELPER FUNCTION ---
 # =============================================================================
 
-def _get_steam_node(config, verbose=True):
+def _get_steam_node(config):
     """
     Navigates through a loaded VDF dictionary to safely find the 'Steam' node.
 
@@ -23,7 +33,6 @@ def _get_steam_node(config, verbose=True):
 
     Args:
         config (dict): The loaded VDF configuration dictionary.
-        verbose (bool): Whether to print error/warning messages.
 
     Returns:
         dict or None: The 'Steam' node dictionary if found, otherwise None.
@@ -31,22 +40,19 @@ def _get_steam_node(config, verbose=True):
 
     # Navigate through the VDF structure: InstallConfigStore → Software → Valve → Steam
     if 'InstallConfigStore' not in config:
-        if verbose:
-            print("[Error] 'InstallConfigStore' section not found in config.vdf")
+        logger.error("'InstallConfigStore' section not found in config.vdf")
         return None
 
     software = config['InstallConfigStore'].get('Software', {})
 
     valve = software.get('Valve') or software.get('valve')
     if not valve:
-        if verbose:
-            print("[Warning] 'Valve' section not found in config.vdf")
+        logger.warning("'Valve' section not found in config.vdf")
         return None
 
     steam = valve.get('Steam') or valve.get('steam')
     if not steam:
-        if verbose:
-            print("[Warning] 'Steam' section not found in config.vdf")
+        logger.warning("'Steam' section not found in config.vdf")
         return None
 
     return steam
@@ -56,7 +62,7 @@ def _get_steam_node(config, verbose=True):
 # --- VDF UPDATE FUNCTIONS ---
 # =============================================================================
 
-def update_config_vdf(config_path, depot_keys, create_backup=True, verbose=True):
+def update_config_vdf(config_path, depot_keys, create_backup=True):
     """
     Updates Steam's config.vdf file by merging depot decryption keys using the VDF library.
     
@@ -67,40 +73,33 @@ def update_config_vdf(config_path, depot_keys, create_backup=True, verbose=True)
         config_path (str or Path): The full path to Steam's config.vdf file.
         depot_keys (dict): Dictionary mapping depot_id to depot_key.
         create_backup (bool): Whether to create a backup of the original file.
-        verbose (bool): Whether to print progress information.
 
     Returns:
         bool: True if the update was successful, False otherwise.
     """
     config_path = Path(config_path)
-    
-    if verbose:
-        print(f"Processing Steam config: {config_path}")
+    logger.info(f"Processing Steam config: {config_path}")
     
     if not config_path.exists():
-        if verbose:
-            print("[Error] config.vdf not found at the specified path.")
+        logger.error("config.vdf not found at the specified path")
         return False
 
     if not depot_keys:
-        if verbose:
-            print("[Warning] No depot data provided. Skipping config.vdf update.")
+        logger.warning("No depot data provided. Skipping config.vdf update")
         return False
 
     try:
         # Load existing Steam config.vdf
-        if verbose:
-            print("  Reading existing config.vdf...")
+        logger.debug("Reading existing config.vdf")
         with config_path.open('r', encoding='utf-8') as f:
             config = vdf.load(f)
 
         # Get the Steam node using the helper function
-        steam = _get_steam_node(config, verbose)
+        steam = _get_steam_node(config)
         if not steam:
             return False
 
-        if verbose:
-            print(f"  Processing {len(depot_keys)} unique depot keys...")
+        logger.info(f"Processing {len(depot_keys)} unique depot keys")
 
         # Ensure depots section exists, then merge in new keys
         steam.setdefault('depots', {})
@@ -108,49 +107,43 @@ def update_config_vdf(config_path, depot_keys, create_backup=True, verbose=True)
         # Update depot keys
         for depot_id, depot_key in depot_keys.items():
             steam['depots'][depot_id] = {'DecryptionKey': depot_key}
+            logger.debug(f"Added depot key for depot {depot_id}")
 
         # Backup original file if requested
         if create_backup:
             backup_path = config_path.with_suffix(config_path.suffix + '.bak')
-            if verbose:
-                print(f"  Backing up original config to {backup_path.name}")
+            logger.debug(f"Backing up original config to {backup_path.name}")
             shutil.copy2(config_path, backup_path)
 
         # Write the updated VDF back to disk
-        if verbose:
-            print("  Writing updated config.vdf...")
+        logger.debug("Writing updated config.vdf")
         with config_path.open('w', encoding='utf-8') as f:
             vdf.dump(config, f, pretty=True)
 
-        if verbose:
-            print(f"  Successfully updated config.vdf with {len(depot_keys)} depot keys.")
+        logger.info(f"Successfully updated config.vdf with {len(depot_keys)} depot keys")
         return True
 
     except Exception as e:
-        if verbose:
-            print(f"[Error] Failed to update config.vdf: {e}")
+        logger.error(f"Failed to update config.vdf: {e}")
+        logger.debug("Config.vdf update error details:", exc_info=True)
         return False
 
 
-def validate_config_vdf(config_path, verbose=True):
+def validate_config_vdf(config_path):
     """
     Validates that a config.vdf file exists and has the expected structure.
 
     Args:
         config_path (str or Path): The full path to Steam's config.vdf file.
-        verbose (bool): Whether to print validation information.
 
     Returns:
         bool: True if the file is valid, False otherwise.
     """
     config_path = Path(config_path)
-    
-    if verbose:
-        print(f"Validating config.vdf: {config_path}")
+    logger.info(f"Validating config.vdf: {config_path}")
     
     if not config_path.exists():
-        if verbose:
-            print("[Error] config.vdf not found at the specified path.")
+        logger.error("config.vdf not found at the specified path")
         return False
 
     try:
@@ -158,41 +151,40 @@ def validate_config_vdf(config_path, verbose=True):
             config = vdf.load(f)
 
         # Check for required structure using the helper
-        steam = _get_steam_node(config, verbose)
+        steam = _get_steam_node(config)
         if not steam:
             return False
 
-        if verbose:
-            depots_count = len(steam.get('depots', {}))
-            print(f"  Valid config.vdf with {depots_count} existing depot entries")
+        depots_count = len(steam.get('depots', {}))
+        logger.info(f"Valid config.vdf with {depots_count} existing depot entries")
         
         return True
 
     except Exception as e:
-        if verbose:
-            print(f"[Error] Failed to validate config.vdf: {e}")
+        logger.error(f"Failed to validate config.vdf: {e}")
+        logger.debug("Config.vdf validation error details:", exc_info=True)
         return False
 
 
-def get_existing_depot_keys(config_path, verbose=True):
+def get_existing_depot_keys(config_path):
     """
     Reads existing depot keys from a config.vdf file.
 
     Args:
         config_path (str or Path): The full path to Steam's config.vdf file.
-        verbose (bool): Whether to print information.
 
     Returns:
         dict: Dictionary mapping depot_id to depot_key, or empty dict on error.
     """
     config_path = Path(config_path)
     existing_keys = {}
+    logger.debug(f"Reading existing depot keys from {config_path}")
     
     try:
         with config_path.open('r', encoding='utf-8') as f:
             config = vdf.load(f)
 
-        steam = _get_steam_node(config, verbose=False) # No need for verbose output here
+        steam = _get_steam_node(config)
         if not steam:
             return existing_keys
 
@@ -202,17 +194,16 @@ def get_existing_depot_keys(config_path, verbose=True):
             if isinstance(depot_data, dict) and 'DecryptionKey' in depot_data:
                 existing_keys[depot_id] = depot_data['DecryptionKey']
         
-        if verbose:
-            print(f"Found {len(existing_keys)} existing depot keys")
+        logger.info(f"Found {len(existing_keys)} existing depot keys")
         
     except Exception as e:
-        if verbose:
-            print(f"[Error] Failed to read existing depot keys: {e}")
+        logger.error(f"Failed to read existing depot keys: {e}")
+        logger.debug("Get existing depot keys error details:", exc_info=True)
     
     return existing_keys
 
 
-def add_depots_to_config_vdf(config_path, depots, create_backup=True, verbose=True):
+def add_depots_to_config_vdf(config_path, depots, create_backup=True):
     """
     Add depot decryption keys to Steam's config.vdf file.
     
@@ -220,24 +211,19 @@ def add_depots_to_config_vdf(config_path, depots, create_backup=True, verbose=Tr
         config_path (str or Path): The full path to Steam's config.vdf file
         depots (list): List of depot dictionaries with 'depot_id' and 'depot_key'
         create_backup (bool): Whether to create a backup of the original file
-        verbose (bool): Whether to print progress information
         
     Returns:
         bool: True if the update was successful, False otherwise
     """
     config_path = Path(config_path)
-    
-    if verbose:
-        print(f"Adding depots to Steam config: {config_path}")
+    logger.info(f"Adding depots to Steam config: {config_path}")
     
     if not config_path.exists():
-        if verbose:
-            print("[Error] config.vdf not found at the specified path.")
+        logger.error("config.vdf not found at the specified path")
         return False
 
     if not depots:
-        if verbose:
-            print("[Warning] No depot data provided. Skipping config.vdf update.")
+        logger.warning("No depot data provided. Skipping config.vdf update")
         return True  # No depots to add is considered success
 
     try:
@@ -248,20 +234,19 @@ def add_depots_to_config_vdf(config_path, depots, create_backup=True, verbose=Tr
                 depot_keys[depot['depot_id']] = depot['depot_key']
         
         if not depot_keys:
-            if verbose:
-                print("[Info] No depot keys to add to config.vdf")
+            logger.info("No depot keys to add to config.vdf")
             return True
         
         # Use existing update function
-        return update_config_vdf(config_path, depot_keys, create_backup, verbose)
+        return update_config_vdf(config_path, depot_keys, create_backup)
         
     except Exception as e:
-        if verbose:
-            print(f"[Error] Failed to add depots to config.vdf: {e}")
+        logger.error(f"Failed to add depots to config.vdf: {e}")
+        logger.debug("Add depots to config.vdf error details:", exc_info=True)
         return False
 
 
-def remove_depots_from_config_vdf(config_path, depots, create_backup=True, verbose=True):
+def remove_depots_from_config_vdf(config_path, depots, create_backup=True):
     """
     Remove depot decryption keys from Steam's config.vdf file.
     
@@ -269,42 +254,35 @@ def remove_depots_from_config_vdf(config_path, depots, create_backup=True, verbo
         config_path (str or Path): The full path to Steam's config.vdf file
         depots (list): List of depot dictionaries with 'depot_id'
         create_backup (bool): Whether to create a backup of the original file
-        verbose (bool): Whether to print progress information
         
     Returns:
         bool: True if the removal was successful, False otherwise
     """
     config_path = Path(config_path)
-    
-    if verbose:
-        print(f"Removing depots from Steam config: {config_path}")
+    logger.info(f"Removing depots from Steam config: {config_path}")
     
     if not config_path.exists():
-        if verbose:
-            print("[Error] config.vdf not found at the specified path.")
+        logger.error("config.vdf not found at the specified path")
         return False
 
     if not depots:
-        if verbose:
-            print("[Warning] No depot data provided. Skipping config.vdf update.")
+        logger.warning("No depot data provided. Skipping config.vdf update")
         return True  # No depots to remove is considered success
 
     try:
         # Load existing Steam config.vdf
-        if verbose:
-            print("  Reading existing config.vdf...")
+        logger.debug("Reading existing config.vdf")
         with config_path.open('r', encoding='utf-8') as f:
             config = vdf.load(f)
 
         # Navigate through the VDF structure using the helper
-        steam = _get_steam_node(config, verbose)
+        steam = _get_steam_node(config)
         if not steam:
             return True # Nothing to remove is considered success
 
         # Check if depots section exists
         if 'depots' not in steam:
-            if verbose:
-                print("[Info] No depots section found in config.vdf")
+            logger.info("No depots section found in config.vdf")
             return True  # Nothing to remove
 
         # Remove depot keys
@@ -315,34 +293,29 @@ def remove_depots_from_config_vdf(config_path, depots, create_backup=True, verbo
             if depot_id in depot_ids_to_remove:
                 del steam['depots'][depot_id]
                 removed_count += 1
-                if verbose:
-                    print(f"  - Removed depot key for {depot_id}")
+                logger.debug(f"Removed depot key for {depot_id}")
 
         if removed_count == 0:
-            if verbose:
-                print("[Info] No matching depot keys found to remove")
+            logger.info("No matching depot keys found to remove")
             return True
 
         # Backup original file if requested
         if create_backup:
             backup_path = config_path.with_suffix(config_path.suffix + '.bak')
-            if verbose:
-                print(f"  Backing up original config to {backup_path.name}")
+            logger.debug(f"Backing up original config to {backup_path.name}")
             shutil.copy2(config_path, backup_path)
 
         # Write the updated VDF back to disk
-        if verbose:
-            print("  Writing updated config.vdf...")
+        logger.debug("Writing updated config.vdf")
         with config_path.open('w', encoding='utf-8') as f:
             vdf.dump(config, f, pretty=True)
 
-        if verbose:
-            print(f"  Successfully removed {removed_count} depot keys from config.vdf")
+        logger.info(f"Successfully removed {removed_count} depot keys from config.vdf")
         return True
 
     except Exception as e:
-        if verbose:
-            print(f"[Error] Failed to remove depots from config.vdf: {e}")
+        logger.error(f"Failed to remove depots from config.vdf: {e}")
+        logger.debug("Remove depots from config.vdf error details:", exc_info=True)
         return False
 
 
@@ -355,12 +328,12 @@ def main():
     Main function for standalone execution.
     Validates a config.vdf file and optionally displays existing depot keys.
     """
-    print("--- vdf_updater.py: Steam config.vdf management ---")
+    logger.info("vdf_updater.py: Steam config.vdf management")
     
     # Parse command line arguments
     if len(sys.argv) < 2:
-        print("Usage: python vdf_updater.py <config_vdf_path> [--show-keys]")
-        print("Example: python vdf_updater.py \"C:\\Steam\\config\\config.vdf\"")
+        logger.error("Usage: python vdf_updater.py <config_vdf_path> [--show-keys]")
+        logger.error("Example: python vdf_updater.py \"C:\\Steam\\config\\config.vdf\"")
         return
     
     config_path = Path(sys.argv[1])
@@ -368,22 +341,22 @@ def main():
     
     # Validate the config file
     if not validate_config_vdf(config_path):
-        print("[Error] config.vdf validation failed.")
+        logger.error("config.vdf validation failed")
         return
     
-    print("[Success] config.vdf is valid.")
+    logger.info("config.vdf is valid")
     
     # Optionally show existing depot keys
     if show_keys:
         existing_keys = get_existing_depot_keys(config_path)
         if existing_keys:
-            print(f"\nExisting depot keys (showing first 10):")
+            logger.info(f"Existing depot keys (showing first 10):")
             for i, (depot_id, depot_key) in enumerate(list(existing_keys.items())[:10]):
-                print(f"  {depot_id}: {depot_key}")
+                logger.info(f"  {depot_id}: {depot_key}")
             if len(existing_keys) > 10:
-                print(f"  ... and {len(existing_keys) - 10} more")
+                logger.info(f"  ... and {len(existing_keys) - 10} more")
         else:
-            print("\nNo existing depot keys found.")
+            logger.info("No existing depot keys found")
 
 
 if __name__ == "__main__":

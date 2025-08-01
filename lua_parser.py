@@ -4,9 +4,18 @@
 # This script scans the 'data' directory for .lua files and extracts depot IDs
 # and their corresponding decryption keys.
 
+import logging
 from pathlib import Path
-import re
 import sys
+
+# Configure logging
+logger = logging.getLogger(__name__)
+if not logger.handlers:
+    handler = logging.StreamHandler()
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+    logger.setLevel(logging.DEBUG)
 
 
 # =============================================================================
@@ -167,9 +176,11 @@ def parse_lua_for_depots(lua_path):
     """
     # Convert to Path object if needed
     lua_path = Path(lua_path)
+    logger.debug(f"Parsing lua file for depots: {lua_path}")
     
     # Extract AppID from filename to exclude it from depot results
     app_id = lua_path.stem
+    logger.debug(f"AppID from filename: {app_id}")
     
     extracted_depots = []
     try:
@@ -193,6 +204,7 @@ def parse_lua_for_depots(lua_path):
                                 'depot_id': depot_id,
                                 'depot_key': depot_key
                             })
+                            logger.debug(f"Found adddepot: {depot_id} with key")
                             continue
                     
                     # Check for addappid calls with key
@@ -206,16 +218,20 @@ def parse_lua_for_depots(lua_path):
                                 'depot_id': depot_id,
                                 'depot_key': depot_key
                             })
+                            logger.debug(f"Found addappid: {depot_id} with key")
                 
                 except Exception as e:
-                    print(f"  [Warning] Error parsing line {line_num} in {lua_path.name}: {e}")
+                    logger.warning(f"Error parsing line {line_num} in {lua_path.name}: {e}")
+                    logger.debug(f"Line parsing exception for line {line_num}:", exc_info=True)
                     continue
                         
     except FileNotFoundError:
-        print(f"  [Warning] Could not find file during parsing: {lua_path}")
+        logger.warning(f"Could not find file during parsing: {lua_path}")
     except Exception as e:
-        print(f"  [Error] Failed to read or parse {lua_path.name}: {e}")
+        logger.error(f"Failed to read or parse {lua_path.name}: {e}")
+        logger.debug(f"File parsing exception for {lua_path.name}:", exc_info=True)
 
+    logger.info(f"Extracted {len(extracted_depots)} depots from {lua_path.name}")
     return extracted_depots
 
 
@@ -235,9 +251,11 @@ def parse_lua_for_all_depots(lua_path):
               Returns empty data if the file is not found or an error occurs.
     """
     lua_path = Path(lua_path)
+    logger.debug(f"Parsing lua file for all depots: {lua_path}")
     
     # Extract AppID from filename
     app_id = lua_path.stem
+    logger.debug(f"AppID from filename: {app_id}")
     
     result = {
         'app_id': app_id,
@@ -246,7 +264,7 @@ def parse_lua_for_all_depots(lua_path):
     
     # Validate that filename is a numeric AppID
     if not app_id.isdigit():
-        print(f"  [Warning] Filename '{lua_path.name}' does not contain a valid numeric AppID")
+        logger.warning(f"Filename '{lua_path.name}' does not contain a valid numeric AppID")
         return result
 
     extracted_depots = []
@@ -272,6 +290,9 @@ def parse_lua_for_all_depots(lua_path):
                             depot_data = {'depot_id': depot_id}
                             if len(args) >= 2 and args[1].strip():
                                 depot_data['depot_key'] = args[1]
+                                logger.debug(f"Found adddepot depot {depot_id} with key")
+                            else:
+                                logger.debug(f"Found adddepot depot {depot_id} without key")
                     
                     # Check for addappid calls
                     if not depot_data:
@@ -285,6 +306,9 @@ def parse_lua_for_all_depots(lua_path):
                                 # Check if it has a key (3rd argument)
                                 if (len(args) >= 3 and args[2].strip()):
                                     depot_data['depot_key'] = args[2]
+                                    logger.debug(f"Found addappid depot {depot_id} with key")
+                                else:
+                                    logger.debug(f"Found addappid depot {depot_id} without key")
                     
                     # Add or update depot data
                     if depot_data:
@@ -296,31 +320,34 @@ def parse_lua_for_all_depots(lua_path):
                             # Update with key if this entry has one and existing doesn't
                             if 'depot_key' in depot_data and 'depot_key' not in existing_depot:
                                 existing_depot['depot_key'] = depot_data['depot_key']
+                                logger.debug(f"Updated depot {depot_data['depot_id']} with key")
                         else:
                             # Add new depot
                             extracted_depots.append(depot_data)
                 
                 except Exception as e:
-                    print(f"  [Warning] Error parsing line {line_num} in {lua_path.name}: {e}")
+                    logger.warning(f"Error parsing line {line_num} in {lua_path.name}: {e}")
+                    logger.debug(f"Line parsing exception for line {line_num}:", exc_info=True)
                     continue
     
     except FileNotFoundError:
-        print(f"  [Warning] Could not find file during parsing: {lua_path}")
+        logger.warning(f"Could not find file during parsing: {lua_path}")
     except Exception as e:
-        print(f"  [Error] Failed to read or parse {lua_path.name}: {e}")
+        logger.error(f"Failed to read or parse {lua_path.name}: {e}")
+        logger.debug(f"File parsing exception for {lua_path.name}:", exc_info=True)
 
     result['depots'] = extracted_depots
+    logger.info(f"Extracted {len(extracted_depots)} total depots from {lua_path.name}")
     return result
 
 
-def parse_all_lua_files(data_dir='data', verbose=True):
+def parse_all_lua_files(data_dir='data'):
     """
     Scans the entire 'data' directory for .lua files and extracts all depot
     information from them.
 
     Args:
         data_dir (str or Path): The directory to scan for .lua files. Defaults to 'data'.
-        verbose (bool): Whether to print progress information. Defaults to True.
 
     Returns:
         list: A list of dictionaries. Each dictionary represents a found depot
@@ -328,41 +355,36 @@ def parse_all_lua_files(data_dir='data', verbose=True):
               list if no data directory is found or no .lua files exist.
     """
     data_dir = Path(data_dir)
+    logger.debug(f"Starting to parse all lua files in directory: {data_dir}")
     all_depots = []
     
     if not data_dir.is_dir():
-        if verbose:
-            print(f"[Warning] Data directory '{data_dir}' not found.")
+        logger.warning(f"Data directory '{data_dir}' not found")
         return all_depots
     
     lua_files_found = 0
-    if verbose:
-        print(f"Scanning '{data_dir}' directory for .lua files...")
+    logger.info(f"Scanning '{data_dir}' directory for .lua files")
     
     # Walk through all subdirectories in the data folder
     for lua_path in data_dir.rglob('*.lua'):
         app_id = lua_path.stem
-        if verbose:
-            print(f"  Processing {lua_path.name} (AppID: {app_id})")
+        logger.debug(f"Processing {lua_path.name} (AppID: {app_id})")
         
         depots = parse_lua_for_depots(lua_path)
         all_depots.extend(depots)
         lua_files_found += 1
     
-    if verbose:
-        print(f"Found {lua_files_found} .lua file(s) containing {len(all_depots)} depot keys total.")
-    
+    logger.info(f"Found {lua_files_found} .lua file(s) containing {len(all_depots)} depot keys total")
     return all_depots
 
 
-def parse_all_lua_files_structured(data_dir='data', verbose=True):
+def parse_all_lua_files_structured(data_dir='data'):
     """
     Scans the entire 'data' directory for .lua files and extracts all depot
     information, returning structured data with AppIDs and their associated depots.
 
     Args:
         data_dir (str or Path): The directory to scan for .lua files. Defaults to 'data'.
-        verbose (bool): Whether to print progress information. Defaults to True.
 
     Returns:
         list: A list of dictionaries. Each dictionary has 'app_id' and 'depots' keys.
@@ -370,32 +392,28 @@ def parse_all_lua_files_structured(data_dir='data', verbose=True):
     """
     # Convert to Path object
     data_dir = Path(data_dir)
+    logger.debug(f"Starting structured parsing of all lua files in directory: {data_dir}")
     all_apps = []
     
     if not data_dir.is_dir():
-        if verbose:
-            print(f"[Warning] Data directory '{data_dir}' not found.")
+        logger.warning(f"Data directory '{data_dir}' not found")
         return all_apps
     
     lua_files_found = 0
-    if verbose:
-        print(f"Scanning '{data_dir}' directory for .lua files...")
+    logger.info(f"Scanning '{data_dir}' directory for .lua files for structured parsing")
     
     # Walk through all subdirectories in the data folder
     for lua_path in data_dir.rglob('*.lua'):
         # Use the improved function that properly categorizes AppID vs DepotID
         app_data = parse_lua_for_all_depots(lua_path)
         
-        if verbose:
-            print(f"  Processing {lua_path.name} (AppID: {app_data['app_id']}) - Found {len(app_data['depots'])} depots")
+        logger.debug(f"Processing {lua_path.name} (AppID: {app_data['app_id']}) - Found {len(app_data['depots'])} depots")
         
         all_apps.append(app_data)
         lua_files_found += 1
     
     total_depots = sum(len(app['depots']) for app in all_apps)
-    if verbose:
-        print(f"Found {lua_files_found} .lua file(s) containing {total_depots} depot entries total.")
-    
+    logger.info(f"Found {lua_files_found} .lua file(s) containing {total_depots} depot entries total")
     return all_apps
 
 
@@ -424,39 +442,36 @@ def main():
     Main function for standalone execution.
     Parses all .lua files and displays the results.
     """
-    print("--- lua_parser.py: Parsing .lua files for depot data ---")
+    logger.info("Starting lua_parser.py: Parsing .lua files for depot data")
     
     # Parse command line arguments
     data_dir = Path('data')
     if len(sys.argv) > 1:
         data_dir = Path(sys.argv[1])
+        logger.debug(f"Using command line data directory: {data_dir}")
     
     # Parse all lua files
     all_depots = parse_all_lua_files(data_dir)
     
     if not all_depots:
-        print("[Warning] No depot data found.")
+        logger.warning("No depot data found")
         return
     
     # Get unique depots
     unique_depots = get_unique_depots(all_depots)
     
-    print(f"\n--- Results ---")
-    print(f"Total depot entries: {len(all_depots)}")
-    print(f"Unique depot keys: {len(unique_depots)}")
+    logger.info("Results summary:")
+    logger.info(f"Total depot entries: {len(all_depots)}")
+    logger.info(f"Unique depot keys: {len(unique_depots)}")
     
     # Display first few entries as sample
-    print(f"\nSample depot entries:")
+    logger.info("Sample depot entries:")
     for i, (depot_id, depot_key) in enumerate(list(unique_depots.items())[:5]):
-        print(f"  {depot_id}: {depot_key}")
+        logger.info(f"  {depot_id}: {depot_key}")
     
     if len(unique_depots) > 5:
-        print(f"  ... and {len(unique_depots) - 5} more")
+        logger.info(f"  ... and {len(unique_depots) - 5} more")
 
 
 if __name__ == "__main__":
-    """
-    Standard script entry point. Ensures that the `main()` function is only
-    called when the script is executed directly, not when imported as a module.
-    """
     main()

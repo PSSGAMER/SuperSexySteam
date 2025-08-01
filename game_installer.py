@@ -496,4 +496,4 @@ def install_game_from_data_folder(config, app_id: str, data_folder: str) -> Dict
 
 
 if __name__ == "__main__":
-    logger.info("Game installer module loaded successfully")
+    logger.info("Broken")

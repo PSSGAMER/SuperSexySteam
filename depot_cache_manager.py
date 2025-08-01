@@ -269,4 +269,4 @@ def clear_all_depot_cache(steam_path: str) -> Dict[str, int]:
 
 
 if __name__ == "__main__":
-    logger.info("Starting depot cache manager test")
+    logger.info("Broken")
