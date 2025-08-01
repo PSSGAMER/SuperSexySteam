@@ -1310,9 +1310,9 @@ class FirstTimeSetupWidget(QStackedWidget):
         steam_page = self.create_steam_path_page()
         self.addWidget(steam_page)
         
-        # Depot cache page
-        depot_page = self.create_depot_cache_page()
-        self.addWidget(depot_page)
+        # GreenLuma path page
+        greenluma_page = self.create_greenluma_path_page()
+        self.addWidget(greenluma_page)
         
         # Completion page
         completion_page = self.create_completion_page()
@@ -1445,15 +1445,15 @@ class FirstTimeSetupWidget(QStackedWidget):
         layout.addStretch()
         return page
         
-    def create_depot_cache_page(self):
-        """Create depot cache path configuration page"""
+    def create_greenluma_path_page(self):
+        """Create GreenLuma path configuration page"""
         page = QWidget()
         layout = QVBoxLayout(page)
         layout.setContentsMargins(60, 60, 60, 60)
         layout.setSpacing(30)
         
         # Title
-        title = QLabel("Configure Depot Cache")
+        title = QLabel("Configure GreenLuma Path")
         title.setStyleSheet(f"""
             QLabel {{
                 color: {Theme.GOLD_PRIMARY};
@@ -1471,7 +1471,7 @@ class FirstTimeSetupWidget(QStackedWidget):
         input_layout.setSpacing(15)
         
         # Label
-        label = QLabel("Depot Cache Directory:")
+        label = QLabel("GreenLuma Directory:")
         label.setStyleSheet(f"""
             QLabel {{
                 color: {Theme.TEXT_PRIMARY};
@@ -1484,13 +1484,16 @@ class FirstTimeSetupWidget(QStackedWidget):
         # Path input with browse button
         path_layout = QHBoxLayout()
         
-        self.depot_cache_input = QLineEdit()
-        self.depot_cache_input.setPlaceholderText("C:\\Program Files (x86)\\Steam\\depotcache")
-        self.depot_cache_input.setStyleSheet(Theme.get_input_style())
-        path_layout.addWidget(self.depot_cache_input, 1)
+        self.greenluma_path_input = QLineEdit()
+        self.greenluma_path_input.setPlaceholderText("C:\\Users\\Administrator\\Documents\\SuperSexySteam\\SuperSexySteam\\GreenLuma")
+        self.greenluma_path_input.setStyleSheet(Theme.get_input_style())
+        # Set default value to match existing config
+        default_greenluma_path = str(Path(__file__).parent / "GreenLuma")
+        self.greenluma_path_input.setText(default_greenluma_path)
+        path_layout.addWidget(self.greenluma_path_input, 1)
         
         browse_button = AnimatedButton("Browse")
-        browse_button.clicked.connect(self.browse_depot_cache_path)
+        browse_button.clicked.connect(self.browse_greenluma_path)
         path_layout.addWidget(browse_button)
         
         input_layout.addLayout(path_layout)
@@ -1505,7 +1508,7 @@ class FirstTimeSetupWidget(QStackedWidget):
         button_layout.addStretch()
         
         finish_button = AnimatedButton("Complete Setup →")
-        finish_button.clicked.connect(self.save_depot_cache_and_finish)
+        finish_button.clicked.connect(self.save_greenluma_and_finish)
         button_layout.addWidget(finish_button)
         
         layout.addLayout(button_layout)
@@ -1575,28 +1578,20 @@ class FirstTimeSetupWidget(QStackedWidget):
         if path:
             self.steam_path_input.setText(path)
             
-    def browse_depot_cache_path(self):
-        """Browse for depot cache directory"""
-        path = QFileDialog.getExistingDirectory(self, "Select Depot Cache Directory")
+    def browse_greenluma_path(self):
+        """Browse for GreenLuma directory"""
+        path = QFileDialog.getExistingDirectory(self, "Select GreenLuma Directory")
         if path:
-            self.depot_cache_input.setText(path)
+            self.greenluma_path_input.setText(path)
             
     def save_steam_path_and_continue(self):
         """Save steam path and continue to next page"""
         self.setup_data['steam_path'] = self.steam_path_input.text()
-        
-        # Auto-populate depot cache if empty
-        if not self.depot_cache_input.text():
-            steam_path = self.steam_path_input.text()
-            if steam_path:
-                depot_cache = os.path.join(steam_path, "depotcache")
-                self.depot_cache_input.setText(depot_cache)
-        
         self.setCurrentIndex(2)
         
-    def save_depot_cache_and_finish(self):
-        """Save depot cache path and go to completion page"""
-        self.setup_data['depot_cache_path'] = self.depot_cache_input.text()
+    def save_greenluma_and_finish(self):
+        """Save greenluma path and go to completion page"""
+        self.setup_data['greenluma_path'] = self.greenluma_path_input.text()
         self.setCurrentIndex(3)
         
     def complete_setup(self):
@@ -1945,14 +1940,14 @@ class SuperSexySteamApp(QMainWindow):
         # Save configuration
         config = {
             'steam_path': setup_data.get('steam_path', ''),
-            'depot_cache_path': setup_data.get('depot_cache_path', '')
+            'greenluma_path': setup_data.get('greenluma_path', '')
         }
         
         # Create config.ini
         try:
             config_path = Path(__file__).parent / "config.ini"
             config_parser = configparser.ConfigParser()
-            config_parser['PATHS'] = config
+            config_parser['Paths'] = config
             
             with open(config_path, 'w') as config_file:
                 config_parser.write(config_file)
