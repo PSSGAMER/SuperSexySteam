@@ -13,19 +13,19 @@ from pathlib import Path
 from typing import Dict, List, Any, Optional
 
 from PySide6.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
+    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QLineEdit, QPushButton, QFrame, QScrollArea, QTextEdit,
     QProgressBar, QTabWidget, QSplitter, QListWidget, QListWidgetItem,
     QGridLayout, QGroupBox, QSpacerItem, QSizePolicy, QStackedWidget,
-    QFileDialog, QMessageBox, QInputDialog, QComboBox, QStatusBar
+    QFileDialog, QMessageBox, QInputDialog, QComboBox, QStatusBar, QDialog
 )
 from PySide6.QtCore import (
-    Qt, QTimer, QPropertyAnimation, QEasingCurve, QRect, QThread, 
+    Qt, QTimer, QPropertyAnimation, QEasingCurve, QRect, QThread,
     Signal, QSize, QPoint, QParallelAnimationGroup, QSequentialAnimationGroup
 )
 from PySide6.QtGui import (
     QPainter, QLinearGradient, QRadialGradient, QColor, QPen, QBrush,
-    QFont, QFontMetrics, QPalette, QPixmap, QIcon, QMovie, QTransform
+    QFont, QFontMetrics, QPalette, QPixmap, QIcon, QMovie, QTransform, QClipboard
 )
 
 # Import our application logic
@@ -200,6 +200,819 @@ class GradientFrame(QFrame):
         painter.setBrush(QBrush(gradient))
         painter.setPen(Qt.PenStyle.NoPen)
         painter.drawRoundedRect(self.rect(), 12, 12)
+
+
+class LoadGamesWorker(QThread):
+    """Worker thread for loading installed games"""
+    
+    games_loaded = Signal(dict)
+    
+    def __init__(self, logic):
+        super().__init__()
+        self.logic = logic
+        
+    def run(self):
+        """Load installed games"""
+        result = self.logic.get_installed_games()
+        self.games_loaded.emit(result)
+
+
+class UninstallWorker(QThread):
+    """Worker thread for uninstalling games"""
+    
+    uninstall_completed = Signal(dict)
+    
+    def __init__(self, logic, app_id):
+        super().__init__()
+        self.logic = logic
+        self.app_id = app_id
+        
+    def run(self):
+        """Uninstall game"""
+        result = self.logic.uninstall_game(self.app_id)
+        self.uninstall_completed.emit(result)
+
+
+class InstalledGameWidget(GradientFrame):
+    """Widget to display a single installed game"""
+    
+    uninstall_requested = Signal(str, str)  # app_id, game_name
+    
+    def __init__(self, game_data, parent=None):
+        super().__init__(parent, [Theme.SURFACE_DARK, Theme.TERTIARY_DARK])
+        self.game_data = game_data
+        self.setup_ui()
+        
+    def setup_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 15, 20, 15)
+        layout.setSpacing(12)
+        
+        # Top row: Game name
+        name_label = QLabel(self.game_data['game_name'])
+        name_label.setStyleSheet(f"""
+            QLabel {{
+                color: {Theme.TEXT_PRIMARY};
+                font-size: 18px;
+                font-weight: bold;
+            }}
+        """)
+        name_label.setWordWrap(True)
+        layout.addWidget(name_label)
+        
+        # Bottom row: AppID and uninstall button
+        bottom_layout = QHBoxLayout()
+        
+        # AppID
+        appid_label = QLabel(f"AppID: {self.game_data['app_id']}")
+        appid_label.setStyleSheet(f"""
+            QLabel {{
+                color: {Theme.TEXT_SECONDARY};
+                font-size: 14px;
+            }}
+        """)
+        bottom_layout.addWidget(appid_label)
+        
+        bottom_layout.addStretch()
+        
+        # Uninstall button
+        uninstall_button = AnimatedButton("Uninstall")
+        uninstall_button.setStyleSheet(f"""
+            QPushButton {{
+                background: {Theme.ACCENT_RED};
+                color: {Theme.TEXT_PRIMARY};
+                border: none;
+                border-radius: 6px;
+                padding: 8px 16px;
+                font-weight: bold;
+                font-size: 12px;
+                min-width: 100px;
+            }}
+            QPushButton:hover {{
+                background: #f44336;
+            }}
+            QPushButton:pressed {{
+                background: #d32f2f;
+            }}
+        """)
+        uninstall_button.clicked.connect(self.request_uninstall)
+        bottom_layout.addWidget(uninstall_button)
+        
+        layout.addLayout(bottom_layout)
+        
+    def request_uninstall(self):
+        """Request uninstallation of this game"""
+        self.uninstall_requested.emit(
+            str(self.game_data['app_id']), 
+            self.game_data['game_name']
+        )
+
+
+class InstalledGamesDialog(QDialog):
+    """Modern installed games dialog"""
+    
+    def __init__(self, logic, parent=None):
+        super().__init__(parent)
+        self.logic = logic
+        self.load_worker = None
+        self.uninstall_worker = None
+        self.setup_ui()
+        self.setup_window()
+        self.load_games()
+        
+    def setup_window(self):
+        """Setup dialog window properties"""
+        self.setWindowTitle("Installed Games")
+        self.setModal(True)
+        self.resize(800, 700)
+        
+        # Set window icon
+        try:
+            icon_path = Path(__file__).parent / "sss.ico"
+            if icon_path.exists():
+                self.setWindowIcon(QIcon(str(icon_path)))
+        except Exception:
+            pass
+            
+        # Apply dark theme
+        self.setStyleSheet(f"""
+            QDialog {{
+                background: {Theme.MAIN_GRADIENT};
+                color: {Theme.TEXT_PRIMARY};
+            }}
+        """)
+        
+    def setup_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(30, 30, 30, 30)
+        layout.setSpacing(20)
+        
+        # Title
+        title = QLabel("Installed Games")
+        title.setStyleSheet(f"""
+            QLabel {{
+                color: {Theme.GOLD_PRIMARY};
+                font-size: 28px;
+                font-weight: bold;
+            }}
+        """)
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(title)
+        
+        # Status and refresh button
+        status_layout = QHBoxLayout()
+        
+        self.status_label = QLabel("Loading installed games...")
+        self.status_label.setStyleSheet(f"""
+            QLabel {{
+                color: {Theme.TEXT_SECONDARY};
+                font-size: 14px;
+            }}
+        """)
+        status_layout.addWidget(self.status_label)
+        
+        status_layout.addStretch()
+        
+        self.refresh_button = AnimatedButton("Refresh")
+        self.refresh_button.setStyleSheet(f"""
+            QPushButton {{
+                background: {Theme.BLUE_GRADIENT};
+                color: {Theme.TEXT_PRIMARY};
+                border: none;
+                border-radius: 8px;
+                padding: 10px 20px;
+                font-weight: bold;
+                font-size: 12px;
+            }}
+            QPushButton:hover {{
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 {Theme.ACCENT_BLUE}, stop:1 #0099cc);
+            }}
+        """)
+        self.refresh_button.clicked.connect(self.load_games)
+        status_layout.addWidget(self.refresh_button)
+        
+        layout.addLayout(status_layout)
+        
+        # Games area
+        games_frame = GradientFrame()
+        games_layout = QVBoxLayout(games_frame)
+        games_layout.setContentsMargins(10, 10, 10, 10)
+        
+        # Scrollable games area
+        self.scroll_area = QScrollArea()
+        self.scroll_area.setWidgetResizable(True)
+        self.scroll_area.setStyleSheet(f"""
+            QScrollArea {{
+                background: transparent;
+                border: none;
+            }}
+            QScrollBar:vertical {{
+                background: {Theme.SURFACE_DARK};
+                width: 12px;
+                border-radius: 6px;
+            }}
+            QScrollBar::handle:vertical {{
+                background: {Theme.GOLD_PRIMARY};
+                border-radius: 6px;
+                min-height: 20px;
+            }}
+            QScrollBar::handle:vertical:hover {{
+                background: {Theme.GOLD_SECONDARY};
+            }}
+        """)
+        
+        self.games_widget = QWidget()
+        self.games_layout = QVBoxLayout(self.games_widget)
+        self.games_layout.setSpacing(10)
+        self.games_layout.setContentsMargins(5, 5, 5, 5)
+        
+        # Initial loading state
+        self.show_loading_state()
+        
+        self.scroll_area.setWidget(self.games_widget)
+        games_layout.addWidget(self.scroll_area)
+        
+        layout.addWidget(games_frame, 1)
+        
+        # Close button
+        close_button = AnimatedButton("✖ Close")
+        close_button.setStyleSheet(f"""
+            QPushButton {{
+                background: {Theme.ACCENT_RED};
+                color: {Theme.TEXT_PRIMARY};
+                border: none;
+                border-radius: 8px;
+                padding: 12px 24px;
+                font-weight: bold;
+                font-size: 14px;
+            }}
+            QPushButton:hover {{
+                background: #f44336;
+            }}
+            QPushButton:pressed {{
+                background: #d32f2f;
+            }}
+        """)
+        close_button.clicked.connect(self.accept)
+        layout.addWidget(close_button)
+        
+    def show_loading_state(self):
+        """Show loading state in games area"""
+        self.clear_games()
+        
+        loading_label = QLabel("⏳\n\nLoading installed games...")
+        loading_label.setStyleSheet(f"""
+            QLabel {{
+                color: {Theme.ACCENT_BLUE};
+                font-size: 16px;
+                padding: 40px;
+            }}
+        """)
+        loading_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.games_layout.addWidget(loading_label)
+        
+    def show_empty_state(self):
+        """Show empty state when no games are installed"""
+        self.clear_games()
+        
+        empty_label = QLabel("🎮\n\nNo games installed\n\nInstall some games first!")
+        empty_label.setStyleSheet(f"""
+            QLabel {{
+                color: {Theme.TEXT_MUTED};
+                font-size: 16px;
+                padding: 40px;
+            }}
+        """)
+        empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.games_layout.addWidget(empty_label)
+        
+    def show_error_state(self, error_message):
+        """Show error state"""
+        self.clear_games()
+        
+        error_label = QLabel(f"❌\n\nError loading games:\n{error_message}")
+        error_label.setStyleSheet(f"""
+            QLabel {{
+                color: {Theme.ACCENT_RED};
+                font-size: 16px;
+                padding: 40px;
+            }}
+        """)
+        error_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.games_layout.addWidget(error_label)
+        
+    def clear_games(self):
+        """Clear all games from the layout"""
+        while self.games_layout.count():
+            child = self.games_layout.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
+                
+    def load_games(self):
+        """Load installed games"""
+        self.show_loading_state()
+        self.status_label.setText("Loading installed games...")
+        self.status_label.setStyleSheet(f"color: {Theme.ACCENT_BLUE}; font-size: 14px;")
+        
+        # Disable refresh button
+        self.refresh_button.setEnabled(False)
+        self.refresh_button.setText("⏳ Loading...")
+        
+        # Start loading in worker thread
+        self.load_worker = LoadGamesWorker(self.logic)
+        self.load_worker.games_loaded.connect(self.on_games_loaded)
+        self.load_worker.start()
+        
+    def on_games_loaded(self, result):
+        """Handle games loading completion"""
+        # Re-enable refresh button
+        self.refresh_button.setEnabled(True)
+        self.refresh_button.setText("🔄 Refresh")
+        
+        if not result['success']:
+            self.status_label.setText(f"Error loading games: {result['error']}")
+            self.status_label.setStyleSheet(f"color: {Theme.ACCENT_RED}; font-size: 14px;")
+            self.show_error_state(result['error'])
+            return
+            
+        games = result['games']
+        
+        if not games:
+            self.status_label.setText("No games installed")
+            self.status_label.setStyleSheet(f"color: {Theme.ACCENT_ORANGE}; font-size: 14px;")
+            self.show_empty_state()
+            return
+            
+        # Show games
+        self.status_label.setText(f"Found {len(games)} installed games")
+        self.status_label.setStyleSheet(f"color: {Theme.ACCENT_GREEN}; font-size: 14px;")
+        
+        self.clear_games()
+        
+        for game in games:
+            game_widget = InstalledGameWidget(game)
+            game_widget.uninstall_requested.connect(self.uninstall_game)
+            self.games_layout.addWidget(game_widget)
+            
+        # Add stretch at the end
+        self.games_layout.addStretch()
+        
+    def uninstall_game(self, app_id, game_name):
+        """Uninstall a specific game"""
+        # Show confirmation dialog
+        reply = QMessageBox.question(
+            self,
+            "Confirm Uninstall",
+            f"Are you sure you want to uninstall '{game_name}' (AppID: {app_id})?\n\n"
+            "This will remove all related files and data.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+        
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+            
+        # Start uninstallation
+        self.status_label.setText(f"Uninstalling {game_name}...")
+        self.status_label.setStyleSheet(f"color: {Theme.ACCENT_ORANGE}; font-size: 14px;")
+        
+        # Disable refresh button during uninstall
+        self.refresh_button.setEnabled(False)
+        self.refresh_button.setText("⏳ Uninstalling...")
+        
+        # Start uninstall in worker thread
+        self.uninstall_worker = UninstallWorker(self.logic, app_id)
+        self.uninstall_worker.uninstall_completed.connect(
+            lambda result: self.on_uninstall_completed(result, game_name)
+        )
+        self.uninstall_worker.start()
+        
+    def on_uninstall_completed(self, result, game_name):
+        """Handle uninstall completion"""
+        # Re-enable refresh button
+        self.refresh_button.setEnabled(True)
+        self.refresh_button.setText("🔄 Refresh")
+        
+        if result['success']:
+            self.status_label.setText(f"Successfully uninstalled {game_name}")
+            self.status_label.setStyleSheet(f"color: {Theme.ACCENT_GREEN}; font-size: 14px;")
+            
+            # Reload games list
+            QTimer.singleShot(1000, self.load_games)
+        else:
+            self.status_label.setText(f"Failed to uninstall {game_name}: {result['error']}")
+            self.status_label.setStyleSheet(f"color: {Theme.ACCENT_RED}; font-size: 14px;")
+
+
+class SearchWorker(QThread):
+    """Worker thread for performing Steam game searches"""
+    
+    search_completed = Signal(dict)
+    
+    def __init__(self, logic, query, max_results=20):
+        super().__init__()
+        self.logic = logic
+        self.query = query
+        self.max_results = max_results
+        
+    def run(self):
+        """Perform the search"""
+        result = self.logic.search_steam_games(self.query, self.max_results)
+        self.search_completed.emit(result)
+
+
+class GameResultWidget(GradientFrame):
+    """Widget to display a single game search result"""
+    
+    appid_copied = Signal(str)
+    
+    def __init__(self, game_data, parent=None):
+        super().__init__(parent, [Theme.SURFACE_DARK, Theme.TERTIARY_DARK])
+        self.game_data = game_data
+        self.setup_ui()
+        
+    def setup_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 15, 20, 15)
+        layout.setSpacing(10)
+        
+        # Game name
+        name_label = QLabel(self.game_data['name'])
+        name_label.setStyleSheet(f"""
+            QLabel {{
+                color: {Theme.TEXT_PRIMARY};
+                font-size: 16px;
+                font-weight: bold;
+            }}
+        """)
+        name_label.setWordWrap(True)
+        layout.addWidget(name_label)
+        
+        # Game details
+        details_layout = QHBoxLayout()
+        
+        # AppID
+        appid_label = QLabel(f"AppID: {self.game_data['appid']}")
+        appid_label.setStyleSheet(f"""
+            QLabel {{
+                color: {Theme.TEXT_SECONDARY};
+                font-size: 14px;
+            }}
+        """)
+        details_layout.addWidget(appid_label)
+        
+        # Type
+        type_label = QLabel(f"Type: {self.game_data.get('type', 'Unknown')}")
+        type_label.setStyleSheet(f"""
+            QLabel {{
+                color: {Theme.TEXT_SECONDARY};
+                font-size: 14px;
+            }}
+        """)
+        details_layout.addWidget(type_label)
+        
+        details_layout.addStretch()
+        
+        # Copy button
+        copy_button = AnimatedButton(f"Copy AppID")
+        copy_button.setStyleSheet(f"""
+            QPushButton {{
+                background: {Theme.ACCENT_GREEN};
+                color: {Theme.TEXT_PRIMARY};
+                border: none;
+                border-radius: 6px;
+                padding: 8px 16px;
+                font-weight: bold;
+                font-size: 12px;
+                min-width: 100px;
+            }}
+            QPushButton:hover {{
+                background: #4caf50;
+            }}
+            QPushButton:pressed {{
+                background: #388e3c;
+            }}
+        """)
+        copy_button.clicked.connect(self.copy_appid)
+        details_layout.addWidget(copy_button)
+        
+        layout.addLayout(details_layout)
+        
+    def copy_appid(self):
+        """Copy AppID to clipboard"""
+        clipboard = QApplication.clipboard()
+        clipboard.setText(str(self.game_data['appid']))
+        self.appid_copied.emit(str(self.game_data['appid']))
+
+
+class SearchDialog(QDialog):
+    """Modern Steam game search dialog"""
+    
+    def __init__(self, logic, parent=None):
+        super().__init__(parent)
+        self.logic = logic
+        self.search_worker = None
+        self.setup_ui()
+        self.setup_window()
+        
+    def setup_window(self):
+        """Setup dialog window properties"""
+        self.setWindowTitle("Steam Game Search")
+        self.setModal(True)
+        self.resize(700, 600)
+        
+        # Set window icon
+        try:
+            icon_path = Path(__file__).parent / "sss.ico"
+            if icon_path.exists():
+                self.setWindowIcon(QIcon(str(icon_path)))
+        except Exception:
+            pass
+            
+        # Apply dark theme
+        self.setStyleSheet(f"""
+            QDialog {{
+                background: {Theme.MAIN_GRADIENT};
+                color: {Theme.TEXT_PRIMARY};
+            }}
+        """)
+        
+    def setup_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(30, 30, 30, 30)
+        layout.setSpacing(20)
+        
+        # Title
+        title = QLabel("Steam Game Search")
+        title.setStyleSheet(f"""
+            QLabel {{
+                color: {Theme.GOLD_PRIMARY};
+                font-size: 28px;
+                font-weight: bold;
+            }}
+        """)
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(title)
+        
+        # Search input frame
+        search_frame = GradientFrame()
+        search_layout = QVBoxLayout(search_frame)
+        search_layout.setContentsMargins(25, 25, 25, 25)
+        search_layout.setSpacing(15)
+        
+        # Search label
+        search_label = QLabel("Enter game name:")
+        search_label.setStyleSheet(f"""
+            QLabel {{
+                color: {Theme.TEXT_PRIMARY};
+                font-size: 16px;
+                font-weight: bold;
+            }}
+        """)
+        search_layout.addWidget(search_label)
+        
+        # Search input and button
+        input_layout = QHBoxLayout()
+        
+        self.search_input = QLineEdit()
+        self.search_input.setPlaceholderText("e.g., Counter-Strike 2, Portal, Half-Life...")
+        self.search_input.setStyleSheet(f"""
+            QLineEdit {{
+                background: {Theme.SURFACE_DARK};
+                color: {Theme.TEXT_PRIMARY};
+                border: 2px solid transparent;
+                border-radius: 8px;
+                padding: 12px;
+                font-size: 14px;
+                min-height: 20px;
+            }}
+            QLineEdit:focus {{
+                border: 2px solid {Theme.GOLD_PRIMARY};
+                background: {Theme.TERTIARY_DARK};
+            }}
+            QLineEdit:hover {{
+                border: 2px solid {Theme.GOLD_SECONDARY};
+            }}
+        """)
+        self.search_input.returnPressed.connect(self.perform_search)
+        input_layout.addWidget(self.search_input, 1)
+        
+        self.search_button = AnimatedButton("Search")
+        self.search_button.clicked.connect(self.perform_search)
+        input_layout.addWidget(self.search_button)
+        
+        search_layout.addLayout(input_layout)
+        layout.addWidget(search_frame)
+        
+        # Status label
+        self.status_label = QLabel("Enter a game name and click search")
+        self.status_label.setStyleSheet(f"""
+            QLabel {{
+                color: {Theme.TEXT_SECONDARY};
+                font-size: 14px;
+            }}
+        """)
+        self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(self.status_label)
+        
+        # Results area
+        results_frame = GradientFrame()
+        results_layout = QVBoxLayout(results_frame)
+        results_layout.setContentsMargins(10, 10, 10, 10)
+        
+        # Results title
+        results_title = QLabel("Search Results")
+        results_title.setStyleSheet(f"""
+            QLabel {{
+                color: {Theme.GOLD_PRIMARY};
+                font-size: 18px;
+                font-weight: bold;
+                padding: 10px;
+            }}
+        """)
+        results_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        results_layout.addWidget(results_title)
+        
+        # Scrollable results area
+        self.scroll_area = QScrollArea()
+        self.scroll_area.setWidgetResizable(True)
+        self.scroll_area.setStyleSheet(f"""
+            QScrollArea {{
+                background: transparent;
+                border: none;
+            }}
+            QScrollBar:vertical {{
+                background: {Theme.SURFACE_DARK};
+                width: 12px;
+                border-radius: 6px;
+            }}
+            QScrollBar::handle:vertical {{
+                background: {Theme.GOLD_PRIMARY};
+                border-radius: 6px;
+                min-height: 20px;
+            }}
+            QScrollBar::handle:vertical:hover {{
+                background: {Theme.GOLD_SECONDARY};
+            }}
+        """)
+        
+        self.results_widget = QWidget()
+        self.results_layout = QVBoxLayout(self.results_widget)
+        self.results_layout.setSpacing(10)
+        self.results_layout.setContentsMargins(5, 5, 5, 5)
+        
+        # Initial empty state
+        self.show_empty_state()
+        
+        self.scroll_area.setWidget(self.results_widget)
+        results_layout.addWidget(self.scroll_area)
+        
+        layout.addWidget(results_frame, 1)
+        
+        # Close button
+        close_button = AnimatedButton("✖ Close")
+        close_button.setStyleSheet(f"""
+            QPushButton {{
+                background: {Theme.ACCENT_RED};
+                color: {Theme.TEXT_PRIMARY};
+                border: none;
+                border-radius: 8px;
+                padding: 12px 24px;
+                font-weight: bold;
+                font-size: 14px;
+            }}
+            QPushButton:hover {{
+                background: #f44336;
+            }}
+            QPushButton:pressed {{
+                background: #d32f2f;
+            }}
+        """)
+        close_button.clicked.connect(self.accept)
+        layout.addWidget(close_button)
+        
+        # Focus on search input
+        self.search_input.setFocus()
+        
+    def show_empty_state(self):
+        """Show empty state in results area"""
+        self.clear_results()
+        
+        empty_label = QLabel("🎮\n\nEnter a game name above to search Steam's database")
+        empty_label.setStyleSheet(f"""
+            QLabel {{
+                color: {Theme.TEXT_MUTED};
+                font-size: 16px;
+                padding: 40px;
+            }}
+        """)
+        empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.results_layout.addWidget(empty_label)
+        
+    def show_no_results_state(self, query):
+        """Show no results state"""
+        self.clear_results()
+        
+        no_results_label = QLabel(f"🚫\n\nNo games found for '{query}'\n\nTry a different search term")
+        no_results_label.setStyleSheet(f"""
+            QLabel {{
+                color: {Theme.TEXT_MUTED};
+                font-size: 16px;
+                padding: 40px;
+            }}
+        """)
+        no_results_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.results_layout.addWidget(no_results_label)
+        
+    def show_loading_state(self):
+        """Show loading state"""
+        self.clear_results()
+        
+        loading_label = QLabel("⏳\n\nSearching...")
+        loading_label.setStyleSheet(f"""
+            QLabel {{
+                color: {Theme.ACCENT_BLUE};
+                font-size: 16px;
+                padding: 40px;
+            }}
+        """)
+        loading_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.results_layout.addWidget(loading_label)
+        
+    def clear_results(self):
+        """Clear all results from the layout"""
+        while self.results_layout.count():
+            child = self.results_layout.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
+                
+    def perform_search(self):
+        """Perform Steam game search"""
+        query = self.search_input.text().strip()
+        
+        if not query:
+            self.status_label.setText("Please enter a game name to search")
+            self.status_label.setStyleSheet(f"color: {Theme.ACCENT_RED}; font-size: 14px;")
+            return
+            
+        # Show loading state
+        self.show_loading_state()
+        self.status_label.setText(f"Searching for '{query}'...")
+        self.status_label.setStyleSheet(f"color: {Theme.ACCENT_BLUE}; font-size: 14px;")
+        
+        # Disable search button
+        self.search_button.setEnabled(False)
+        self.search_button.setText("⏳ Searching...")
+        
+        # Start search in worker thread
+        self.search_worker = SearchWorker(self.logic, query, 20)
+        self.search_worker.search_completed.connect(self.on_search_completed)
+        self.search_worker.start()
+        
+    def on_search_completed(self, result):
+        """Handle search completion"""
+        # Re-enable search button
+        self.search_button.setEnabled(True)
+        self.search_button.setText("🔍 Search")
+        
+        if not result['success']:
+            self.status_label.setText(f"Error searching: {result['error']}")
+            self.status_label.setStyleSheet(f"color: {Theme.ACCENT_RED}; font-size: 14px;")
+            self.show_empty_state()
+            return
+            
+        games = result['games']
+        query = self.search_input.text().strip()
+        
+        if not games:
+            self.status_label.setText(f"No games found for '{query}'")
+            self.status_label.setStyleSheet(f"color: {Theme.ACCENT_ORANGE}; font-size: 14px;")
+            self.show_no_results_state(query)
+            return
+            
+        # Show results
+        self.status_label.setText(f"Found {len(games)} games for '{query}'")
+        self.status_label.setStyleSheet(f"color: {Theme.ACCENT_GREEN}; font-size: 14px;")
+        
+        self.clear_results()
+        
+        for i, game in enumerate(games, 1):
+            game_widget = GameResultWidget(game)
+            game_widget.appid_copied.connect(self.on_appid_copied)
+            self.results_layout.addWidget(game_widget)
+            
+        # Add stretch at the end
+        self.results_layout.addStretch()
+        
+    def on_appid_copied(self, appid):
+        """Handle AppID copied to clipboard"""
+        self.status_label.setText(f"AppID {appid} copied to clipboard!")
+        self.status_label.setStyleSheet(f"color: {Theme.ACCENT_GREEN}; font-size: 14px;")
+        
+        # Reset status after 3 seconds
+        QTimer.singleShot(3000, lambda: self.status_label.setText("Enter a game name and click search"))
+
+# --- End of content from search_dialog.py ---
 
 
 class StatsWidget(GradientFrame):
@@ -999,13 +1812,11 @@ class MainInterface(QWidget):
             
     def open_search_dialog(self):
         """Open game search dialog"""
-        from search_dialog import SearchDialog
         dialog = SearchDialog(self.logic, self)
         dialog.exec()
         
     def open_installed_games_dialog(self):
         """Open installed games dialog"""
-        from installed_games_dialog import InstalledGamesDialog
         dialog = InstalledGamesDialog(self.logic, self)
         dialog.exec()
         
