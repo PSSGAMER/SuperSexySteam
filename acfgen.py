@@ -4,11 +4,9 @@
 # Updated for the new database-driven SuperSexySteam system.
 # These files are critical for the Steam client to recognize games as "installed."
 
-import configparser
 import logging
 import re
 import time
-import traceback
 from pathlib import Path
 from steam.client import SteamClient
 from typing import List, Dict, Union
@@ -279,10 +277,10 @@ class ManifestGenerator:
             acf_dict = {
                 "AppState": {
                     "appid": parsed_info['AppId'],
-                    "Universe": 1, # 1 = Public Steam
+                    "Universe": 1,
                     "LauncherPath": "",
                     "name": parsed_info['Name'],
-                    "StateFlags": 1026, # 4 = Update required, download in progress
+                    "StateFlags": 1026,
                     "installdir": parsed_info['InstallDir'],
                     "LastUpdated": 0,
                     "SizeOnDisk": total_size,
