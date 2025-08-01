@@ -118,7 +118,7 @@ def clear_all_data(config, verbose=True) -> Dict[str, any]:
             greenluma_path = Path(greenluma_path_str)
             if greenluma_path.is_dir():
                 try:
-                    removed_count = clear_greenluma_applist(str(greenluma_path), verbose=verbose)
+                    removed_count = clear_greenluma_applist(str(greenluma_path))
                     if removed_count >= 0:
                         result['stats']['greenluma_files_removed'] = removed_count
                         if verbose:
@@ -296,7 +296,7 @@ def uninstall_specific_appid(config, app_id: str, verbose=True) -> Dict[str, any
             greenluma_path = Path(greenluma_path_str)
             if greenluma_path.is_dir():
                 try:
-                    greenluma_result = remove_appid_from_greenluma(str(greenluma_path), app_id, depots, verbose=verbose)
+                    greenluma_result = remove_appid_from_greenluma(str(greenluma_path), app_id, depots)
                     if greenluma_result['success']:
                         total_removed = greenluma_result['stats'].get('appids_removed', 0) + greenluma_result['stats'].get('depots_removed', 0)
                         result['stats']['greenluma_files_removed'] = total_removed

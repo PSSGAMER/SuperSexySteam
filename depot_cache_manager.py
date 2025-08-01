@@ -4,9 +4,22 @@
 # Handles copying manifest files from data folders to Steam's depot cache
 # and removing them during uninstallation.
 
+import logging
 from pathlib import Path
 import shutil
 from typing import Dict, List, Optional
+
+# Configure logging for this module
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+
+# Create console handler with formatting
+if not logger.handlers:
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.DEBUG)
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    console_handler.setFormatter(formatter)
+    logger.addHandler(console_handler)
 
 
 def copy_manifests_for_appid(steam_path: str, app_id: str, data_folder: str) -> Dict[str, int]:
@@ -21,6 +34,9 @@ def copy_manifests_for_appid(steam_path: str, app_id: str, data_folder: str) -> 
     Returns:
         Dict[str, int]: Statistics with 'copied_count' and 'skipped_count'
     """
+    logger.info(f"Copying manifest files for AppID {app_id} from {data_folder}")
+    logger.debug(f"Steam path: {steam_path}")
+    
     stats = {'copied_count': 0, 'skipped_count': 0}
     
     try:
@@ -28,47 +44,59 @@ def copy_manifests_for_appid(steam_path: str, app_id: str, data_folder: str) -> 
         steam_path_obj = Path(steam_path)
         data_folder_obj = Path(data_folder)
         
+        logger.debug(f"Data folder path: {data_folder_obj}")
+        
         # Construct depot cache path
         depot_cache_path = steam_path_obj / 'depotcache'
+        logger.debug(f"Depot cache path: {depot_cache_path}")
+        
         if not depot_cache_path.exists():
             try:
+                logger.info(f"Creating depot cache directory: {depot_cache_path}")
                 depot_cache_path.mkdir(parents=True, exist_ok=True)
-                print(f"[INFO] Created depot cache directory: {depot_cache_path}")
+                logger.info(f"Created depot cache directory successfully")
             except Exception as e:
-                print(f"[ERROR] Failed to create depot cache directory: {e}")
+                logger.error(f"Failed to create depot cache directory: {e}")
+                logger.debug("Depot cache creation exception:", exc_info=True)
                 return stats
         
         # Find all manifest files in the data folder
         manifest_files = list(data_folder_obj.glob("*.manifest"))
+        logger.debug(f"Found {len(manifest_files)} manifest files in data folder")
         
         if not manifest_files:
-            print(f"[INFO] No manifest files found for AppID {app_id} in {data_folder_obj}")
+            logger.info(f"No manifest files found for AppID {app_id} in {data_folder_obj}")
             return stats
         
         # Copy each manifest file
         for manifest_file in manifest_files:
             try:
                 destination = depot_cache_path / manifest_file.name
+                logger.debug(f"Processing manifest file: {manifest_file.name}")
                 
                 # Check if file already exists and is identical
                 if destination.exists():
                     if manifest_file.stat().st_size == destination.stat().st_size:
                         # Files are same size, assume they're identical
                         stats['skipped_count'] += 1
+                        logger.debug(f"Skipping manifest {manifest_file.name} (already exists with same size)")
                         continue
                 
                 # Copy the file
+                logger.debug(f"Copying {manifest_file.name} to depot cache")
                 shutil.copy2(manifest_file, destination)
                 stats['copied_count'] += 1
-                print(f"[INFO] Copied manifest: {manifest_file.name}")
+                logger.info(f"Copied manifest: {manifest_file.name}")
                 
             except Exception as e:
-                print(f"[ERROR] Failed to copy manifest {manifest_file.name}: {e}")
+                logger.error(f"Failed to copy manifest {manifest_file.name}: {e}")
+                logger.debug(f"Manifest copy exception for {manifest_file.name}:", exc_info=True)
         
-        print(f"[INFO] Depot cache update complete for AppID {app_id}: {stats['copied_count']} copied, {stats['skipped_count']} skipped")
+        logger.info(f"Depot cache update complete for AppID {app_id}: {stats['copied_count']} copied, {stats['skipped_count']} skipped")
         
     except Exception as e:
-        print(f"[ERROR] Failed to update depot cache for AppID {app_id}: {e}")
+        logger.error(f"Failed to update depot cache for AppID {app_id}: {e}")
+        logger.debug("Depot cache update exception:", exc_info=True)
     
     return stats
 
@@ -84,6 +112,10 @@ def remove_manifests_for_appid(steam_path: str, manifest_filenames: List[str]) -
     Returns:
         Dict[str, int]: Statistics with 'removed_count'.
     """
+    logger.info(f"Removing {len(manifest_filenames)} manifest files from depot cache")
+    logger.debug(f"Steam path: {steam_path}")
+    logger.debug(f"Manifest files to remove: {manifest_filenames}")
+    
     stats = {'removed_count': 0}
     
     try:
@@ -91,31 +123,38 @@ def remove_manifests_for_appid(steam_path: str, manifest_filenames: List[str]) -
         
         # Construct depot cache path
         depot_cache_path = steam_path_obj / 'depotcache'
+        logger.debug(f"Depot cache path: {depot_cache_path}")
+        
         if not depot_cache_path.exists():
-            print(f"[INFO] Depot cache directory does not exist: {depot_cache_path}")
+            logger.info(f"Depot cache directory does not exist: {depot_cache_path}")
             return stats
         
         if not manifest_filenames:
-            print(f"[INFO] No manifest files specified for removal.")
+            logger.info("No manifest files specified for removal")
             return stats
             
         # Remove each specified manifest file
         for filename in manifest_filenames:
             manifest_file_path = depot_cache_path / filename
+            logger.debug(f"Processing manifest file for removal: {filename}")
+            
             if manifest_file_path.exists():
                 try:
+                    logger.debug(f"Removing manifest file: {manifest_file_path}")
                     manifest_file_path.unlink()
                     stats['removed_count'] += 1
-                    print(f"[INFO] Removed manifest: {filename}")
+                    logger.info(f"Removed manifest: {filename}")
                 except Exception as e:
-                    print(f"[ERROR] Failed to remove manifest {filename}: {e}")
+                    logger.error(f"Failed to remove manifest {filename}: {e}")
+                    logger.debug(f"Manifest removal exception for {filename}:", exc_info=True)
             else:
-                print(f"[WARNING] Manifest file not found in depotcache, skipping: {filename}")
+                logger.warning(f"Manifest file not found in depotcache, skipping: {filename}")
         
-        print(f"[INFO] Depot cache cleanup complete: {stats['removed_count']} specified manifest(s) removed.")
+        logger.info(f"Depot cache cleanup complete: {stats['removed_count']} specified manifest(s) removed")
         
     except Exception as e:
-        print(f"[ERROR] Failed to cleanup depot cache: {e}")
+        logger.error(f"Failed to cleanup depot cache: {e}")
+        logger.debug("Depot cache cleanup exception:", exc_info=True)
     
     return stats
 
@@ -130,6 +169,8 @@ def get_depot_cache_info(steam_path: str) -> Dict[str, any]:
     Returns:
         Dict[str, any]: Information about depot cache
     """
+    logger.debug(f"Getting depot cache info for Steam path: {steam_path}")
+    
     info = {
         'path': '',
         'exists': False,
@@ -145,22 +186,30 @@ def get_depot_cache_info(steam_path: str) -> Dict[str, any]:
         info['path'] = str(depot_cache_path)
         info['exists'] = depot_cache_path.exists()
         
+        logger.debug(f"Depot cache path: {depot_cache_path}, exists: {info['exists']}")
+        
         if info['exists']:
             manifest_files = list(depot_cache_path.glob("*.manifest"))
             info['manifest_count'] = len(manifest_files)
+            
+            logger.debug(f"Found {info['manifest_count']} manifest files")
             
             total_size = 0
             for manifest_file in manifest_files:
                 try:
                     total_size += manifest_file.stat().st_size
-                except Exception:
+                except Exception as e:
+                    logger.debug(f"Could not get size for {manifest_file.name}: {e}")
                     pass  # Skip files we can't read
             
             info['total_size_mb'] = total_size / (1024 * 1024)
+            logger.debug(f"Total depot cache size: {info['total_size_mb']:.2f} MB")
     
     except Exception as e:
-        print(f"[ERROR] Failed to get depot cache info: {e}")
+        logger.error(f"Failed to get depot cache info: {e}")
+        logger.debug("Get depot cache info exception:", exc_info=True)
     
+    logger.info(f"Depot cache info: {info['manifest_count']} files, {info['total_size_mb']:.2f} MB")
     return info
 
 
@@ -174,6 +223,9 @@ def clear_all_depot_cache(steam_path: str) -> Dict[str, int]:
     Returns:
         Dict[str, int]: Statistics with 'removed_count'
     """
+    logger.info("Clearing all manifest files from depot cache")
+    logger.debug(f"Steam path: {steam_path}")
+    
     stats = {'removed_count': 0}
     
     try:
@@ -182,39 +234,39 @@ def clear_all_depot_cache(steam_path: str) -> Dict[str, int]:
         
         # Construct depot cache path
         depot_cache_path = steam_path_obj / 'depotcache'
+        logger.debug(f"Depot cache path: {depot_cache_path}")
+        
         if not depot_cache_path.exists():
-            print(f"[INFO] Depot cache directory does not exist: {depot_cache_path}")
+            logger.info(f"Depot cache directory does not exist: {depot_cache_path}")
             return stats
         
         # Find all manifest files in depot cache
         manifest_files = list(depot_cache_path.glob("*.manifest"))
+        logger.debug(f"Found {len(manifest_files)} manifest files to remove")
         
         if not manifest_files:
-            print(f"[INFO] No manifest files found in depot cache")
+            logger.info("No manifest files found in depot cache")
             return stats
         
         # Remove all manifest files
         for manifest_file in manifest_files:
             try:
+                logger.debug(f"Removing manifest file: {manifest_file.name}")
                 manifest_file.unlink()
                 stats['removed_count'] += 1
-                print(f"[INFO] Removed manifest: {manifest_file.name}")
+                logger.info(f"Removed manifest: {manifest_file.name}")
             except Exception as e:
-                print(f"[ERROR] Failed to remove manifest {manifest_file.name}: {e}")
+                logger.error(f"Failed to remove manifest {manifest_file.name}: {e}")
+                logger.debug(f"Manifest removal exception for {manifest_file.name}:", exc_info=True)
         
-        print(f"[INFO] Depot cache cleanup complete: {stats['removed_count']} files removed")
+        logger.info(f"Depot cache cleanup complete: {stats['removed_count']} files removed")
         
     except Exception as e:
-        print(f"[ERROR] Failed to clear depot cache: {e}")
+        logger.error(f"Failed to clear depot cache: {e}")
+        logger.debug("Clear depot cache exception:", exc_info=True)
     
     return stats
 
 
 if __name__ == "__main__":
-    # Test the depot cache manager
-    print("Depot cache manager module loaded successfully!")
-    
-    # Example test (commented out to avoid accidental execution)
-    # steam_path = "C:\\Program Files (x86)\\Steam"
-    # info = get_depot_cache_info(steam_path)
-    # print(f"Depot cache info: {info}")
+    logger.info("Starting depot cache manager test")
