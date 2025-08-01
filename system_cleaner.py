@@ -336,6 +336,3 @@ def uninstall_specific_appid(config, app_id: str) -> Dict[str, any]:
     return result
 
 
-if __name__ == "__main__":
-    logger.info("system_cleaner.py - Comprehensive cleanup and uninstallation functions")
-    logger.info("Use clear_all_data() and uninstall_specific_appid() functions")

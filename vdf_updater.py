@@ -359,9 +359,3 @@ def main():
             logger.info("No existing depot keys found")
 
 
-if __name__ == "__main__":
-    """
-    Standard script entry point. Ensures that the `main()` function is only
-    called when the script is executed directly, not when imported as a module.
-    """
-    main()

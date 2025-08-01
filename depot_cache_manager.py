@@ -268,5 +268,3 @@ def clear_all_depot_cache(steam_path: str) -> Dict[str, int]:
     return stats
 
 
-if __name__ == "__main__":
-    logger.info("Broken")

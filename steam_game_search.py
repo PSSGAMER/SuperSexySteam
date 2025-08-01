@@ -208,10 +208,4 @@ def get_game_name_by_appid(appid: str) -> str:
         return f"AppID {appid}"
 
 
-if __name__ == "__main__":
-    name = input("Enter the Steam game name: ").strip()
-    appid = find_appid(name)
-    if appid:
-        print(f"Found AppID for \"{name}\": {appid}")
-    else:
-        print(f"No results for \"{name}\".")
+

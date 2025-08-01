@@ -473,5 +473,3 @@ def main():
         logger.info(f"  ... and {len(unique_depots) - 5} more")
 
 
-if __name__ == "__main__":
-    main()

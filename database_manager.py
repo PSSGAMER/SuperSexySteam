@@ -776,5 +776,3 @@ def test_database():
     print("Database test completed.")
 
 
-if __name__ == "__main__":
-    test_database()

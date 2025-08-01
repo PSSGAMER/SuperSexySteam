@@ -495,5 +495,3 @@ def install_game_from_data_folder(config, app_id: str, data_folder: str) -> Dict
     return result
 
 
-if __name__ == "__main__":
-    logger.info("Broken")

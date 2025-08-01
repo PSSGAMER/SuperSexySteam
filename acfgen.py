@@ -480,5 +480,3 @@ def remove_all_tracked_acf_files(steam_path: Union[str, Path], tracked_appids: L
     return stats
 
 
-if __name__ == "__main__":
-    logger.info("Broken")

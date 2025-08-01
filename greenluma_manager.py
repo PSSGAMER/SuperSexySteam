@@ -888,5 +888,3 @@ def main():
         logger.info("Available commands: validate, stats, clear, configure, check_duplicates")
 
 
-if __name__ == "__main__":
-    main()
