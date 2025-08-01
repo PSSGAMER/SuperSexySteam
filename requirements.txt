@@ -1,6 +1,4 @@
-customtkinter 
-tkinterdnd2 
-Pillow 
+PySide6
 steam 
 protobuf==3.20.3 
 gevent-eventemitter
