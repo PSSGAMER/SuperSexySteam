@@ -261,7 +261,7 @@ class GameInstaller:
         logger.debug(f"This unified function handles all aspects of uninstallation")
         # This unified function handles all aspects of uninstallation.
         # remove_data_folder is True because an update implies replacing the old data.
-        return uninstall_specific_appid(self.config, app_id, verbose=False)
+        return uninstall_specific_appid(self.config, app_id)
     
     def validate_installation(self, app_id: str) -> Dict[str, any]:
         """
@@ -321,7 +321,7 @@ class GameInstaller:
                 from vdf_updater import get_existing_depot_keys
                 config_vdf_path = self.steam_path / 'config' / 'config.vdf'
                 if config_vdf_path.exists():
-                    existing_keys = get_existing_depot_keys(str(config_vdf_path), verbose=False)
+                    existing_keys = get_existing_depot_keys(str(config_vdf_path))
                     if existing_keys:
                         result['components']['config_vdf'] = True
                         logger.debug(f"Config.vdf component validation: PASS - {len(existing_keys)} keys found")
