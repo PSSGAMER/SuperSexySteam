@@ -22,6 +22,42 @@ if not logger.handlers:
     logger.addHandler(handler)
     logger.setLevel(logging.DEBUG)
 
+def _validate_paths(config, result: Dict[str, any]) -> tuple[Path, Path, Path]:
+    """
+    Validate and return paths from configuration.
+    
+    Args:
+        config: Application configuration
+        result: Result dictionary to append warnings to
+        
+    Returns:
+        tuple: (steam_path, greenluma_path, script_dir) - paths may be None if invalid
+    """
+    steam_path_str = config.get('Paths', 'steam_path', fallback='')
+    greenluma_path_str = config.get('Paths', 'greenluma_path', fallback='')
+    script_dir = Path(__file__).parent
+    
+    steam_path = None
+    greenluma_path = None
+    
+    if steam_path_str:
+        steam_path = Path(steam_path_str)
+        if not steam_path.is_dir():
+            result['warnings'].append("Steam path not configured or invalid")
+            steam_path = None
+    else:
+        result['warnings'].append("Steam path not configured")
+        
+    if greenluma_path_str:
+        greenluma_path = Path(greenluma_path_str)
+        if not greenluma_path.is_dir():
+            result['warnings'].append("GreenLuma path not configured or invalid")
+            greenluma_path = None
+    else:
+        result['warnings'].append("GreenLuma path not configured")
+    
+    return steam_path, greenluma_path, script_dir
+
 def clear_all_data(config) -> Dict[str, any]:
     """
     Completely clear all SuperSexySteam data from the system.
@@ -56,89 +92,73 @@ def clear_all_data(config) -> Dict[str, any]:
     }
     
     try:
-        # Step 1: Get all data before clearing database
+        # Step 1: Get and validate paths
+        steam_path, greenluma_path, script_dir = _validate_paths(config, result)
+        
+        # Step 2: Get all data before clearing database
         db = get_database_manager()
         installed_appids = db.get_all_installed_appids()
         all_depots = db.get_all_depots_for_installed_apps()
         
         logger.info(f"Found {len(installed_appids)} installed AppIDs and {len(all_depots)} depots")
         
-        # Step 2: Clear Steam config.vdf depot keys
-        steam_path_str = config.get('Paths', 'steam_path', fallback='')
-        if steam_path_str:
-            steam_path = Path(steam_path_str)
-            if steam_path.is_dir():
-                try:
-                    config_vdf_path = steam_path / 'config' / 'config.vdf'
-                    if config_vdf_path.exists():
-                        # Get existing depot keys to see what we're removing
-                        existing_keys = get_existing_depot_keys(str(config_vdf_path))
-                        
-                        # Remove all depot keys that belong to tracked AppIDs
-                        depots_to_remove = [d for d in all_depots if 'decryption_key' in d]
-                        if depots_to_remove:
-                            if remove_depots_from_config_vdf(str(config_vdf_path), depots_to_remove):
-                                result['stats']['depot_keys_removed'] = len(depots_to_remove)
-                                logger.info(f"Removed {len(depots_to_remove)} depot keys from config.vdf")
-                            else:
-                                result['warnings'].append("Failed to remove depot keys from config.vdf")
+        # Step 3: Clear Steam config.vdf depot keys
+        if steam_path:
+            try:
+                config_vdf_path = steam_path / 'config' / 'config.vdf'
+                if config_vdf_path.exists():
+                    # Get existing depot keys to see what we're removing
+                    existing_keys = get_existing_depot_keys(str(config_vdf_path))
+                    
+                    # Remove all depot keys that belong to tracked AppIDs
+                    depots_to_remove = [d for d in all_depots if 'depot_key' in d]
+                    if depots_to_remove:
+                        if remove_depots_from_config_vdf(str(config_vdf_path), depots_to_remove):
+                            result['stats']['depot_keys_removed'] = len(depots_to_remove)
+                            logger.info(f"Removed {len(depots_to_remove)} depot keys from config.vdf")
                         else:
-                            logger.info("No depot keys to remove from config.vdf")
-                except Exception as e:
-                    result['warnings'].append(f"Config.vdf cleanup failed: {e}")
-                    logger.warning(f"Config.vdf cleanup failed: {e}")
-            else:
-                result['warnings'].append("Steam path not configured or invalid")
-        else:
-            result['warnings'].append("Steam path not configured or invalid")
-        
-        # Step 3: Clear all depot cache files
-        if steam_path_str:
-            steam_path = Path(steam_path_str)
-            if steam_path.is_dir():
-                try:
-                    depot_stats = clear_all_depot_cache(str(steam_path))
-                    result['stats']['depotcache_files_removed'] = depot_stats.get('removed_count', 0)
-                    logger.info(f"Removed {depot_stats['removed_count']} manifest files from depot cache")
-                except Exception as e:
-                    result['warnings'].append(f"Depot cache cleanup failed: {e}")
-                    logger.warning(f"Depot cache cleanup failed: {e}")
-        
-        # Step 4: Remove ACF files for tracked AppIDs
-        if steam_path_str:
-            steam_path = Path(steam_path_str)
-            if steam_path.is_dir():
-                try:
-                    acf_stats = remove_all_tracked_acf_files(str(steam_path), installed_appids)
-                    result['stats']['acf_files_removed'] = acf_stats.get('removed_count', 0)
-                    logger.info(f"Removed {acf_stats['removed_count']} ACF files")
-                except Exception as e:
-                    result['warnings'].append(f"ACF cleanup failed: {e}")
-                    logger.warning(f"ACF cleanup failed: {e}")
-        
-        # Step 5: Clear GreenLuma AppList
-        greenluma_path_str = config.get('Paths', 'greenluma_path', fallback='')
-        if greenluma_path_str:
-            greenluma_path = Path(greenluma_path_str)
-            if greenluma_path.is_dir():
-                try:
-                    removed_count = clear_greenluma_applist(str(greenluma_path))
-                    if removed_count >= 0:
-                        result['stats']['greenluma_files_removed'] = removed_count
-                        logger.info(f"Removed {removed_count} files from GreenLuma AppList")
+                            result['warnings'].append("Failed to remove depot keys from config.vdf")
                     else:
-                        result['warnings'].append("Failed to clear GreenLuma AppList")
-                except Exception as e:
-                    result['warnings'].append(f"GreenLuma cleanup failed: {e}")
-                    logger.warning(f"GreenLuma cleanup failed: {e}")
-            else:
-                result['warnings'].append("GreenLuma path not configured or invalid")
-        else:
-            result['warnings'].append("GreenLuma path not configured or invalid")
+                        logger.info("No depot keys to remove from config.vdf")
+            except Exception as e:
+                result['warnings'].append(f"Config.vdf cleanup failed: {e}")
+                logger.warning(f"Config.vdf cleanup failed: {e}")
         
-        # Step 6: Clear data folder
+        # Step 4: Clear all depot cache files
+        if steam_path:
+            try:
+                depot_stats = clear_all_depot_cache(str(steam_path))
+                result['stats']['depotcache_files_removed'] = depot_stats.get('removed_count', 0)
+                logger.info(f"Removed {depot_stats['removed_count']} manifest files from depot cache")
+            except Exception as e:
+                result['warnings'].append(f"Depot cache cleanup failed: {e}")
+                logger.warning(f"Depot cache cleanup failed: {e}")
+        
+        # Step 5: Remove ACF files for tracked AppIDs
+        if steam_path:
+            try:
+                acf_stats = remove_all_tracked_acf_files(str(steam_path), installed_appids)
+                result['stats']['acf_files_removed'] = acf_stats.get('removed_count', 0)
+                logger.info(f"Removed {acf_stats['removed_count']} ACF files")
+            except Exception as e:
+                result['warnings'].append(f"ACF cleanup failed: {e}")
+                logger.warning(f"ACF cleanup failed: {e}")
+        
+        # Step 6: Clear GreenLuma AppList
+        if greenluma_path:
+            try:
+                removed_count = clear_greenluma_applist(str(greenluma_path))
+                if removed_count >= 0:
+                    result['stats']['greenluma_files_removed'] = removed_count
+                    logger.info(f"Removed {removed_count} files from GreenLuma AppList")
+                else:
+                    result['warnings'].append("Failed to clear GreenLuma AppList")
+            except Exception as e:
+                result['warnings'].append(f"GreenLuma cleanup failed: {e}")
+                logger.warning(f"GreenLuma cleanup failed: {e}")
+        
+        # Step 7: Clear data folder
         try:
-            script_dir = Path(__file__).parent
             data_folder = script_dir / "data"
             
             if data_folder.exists():
@@ -152,7 +172,7 @@ def clear_all_data(config) -> Dict[str, any]:
             result['warnings'].append(f"Data folder cleanup failed: {e}")
             logger.warning(f"Data folder cleanup failed: {e}")
         
-        # Step 7: Clear database (do this last)
+        # Step 8: Clear database (do this last)
         try:
             db_file = Path('supersexysteam.db')
             if db_file.exists():
@@ -214,7 +234,10 @@ def uninstall_specific_appid(config, app_id: str) -> Dict[str, any]:
     }
     
     try:
-        # Step 1: Check if AppID exists in database
+        # Step 1: Get and validate paths
+        steam_path, greenluma_path, script_dir = _validate_paths(config, result)
+        
+        # Step 2: Check if AppID exists in database
         db = get_database_manager()
         if not db.is_appid_exists(app_id):
             error_msg = f"AppID {app_id} not found in database"
@@ -227,42 +250,36 @@ def uninstall_specific_appid(config, app_id: str) -> Dict[str, any]:
         manifest_filenames = db.get_manifests_for_appid(app_id)
         logger.info(f"Found {len(depots)} depots and {len(manifest_filenames)} manifests for AppID {app_id}")
         
-        # Step 2: Remove depot keys from config.vdf
-        steam_path_str = config.get('Paths', 'steam_path', fallback='')
-        if steam_path_str:
-            steam_path = Path(steam_path_str)
-            if steam_path.is_dir():
-                try:
-                    config_vdf_path = steam_path / 'config' / 'config.vdf'
-                    depots_with_keys = [d for d in depots if 'depot_key' in d]
-                    if depots_with_keys:
-                        if remove_depots_from_config_vdf(str(config_vdf_path), depots_with_keys):
-                            result['stats']['depot_keys_removed'] = len(depots_with_keys)
-                            logger.info(f"Removed {len(depots_with_keys)} depot keys from config.vdf")
-                        else:
-                            result['warnings'].append("Failed to update config.vdf")
+        # Step 3: Remove depot keys from config.vdf
+        if steam_path:
+            try:
+                config_vdf_path = steam_path / 'config' / 'config.vdf'
+                depots_with_keys = [d for d in depots if 'depot_key' in d]
+                if depots_with_keys:
+                    if remove_depots_from_config_vdf(str(config_vdf_path), depots_with_keys):
+                        result['stats']['depot_keys_removed'] = len(depots_with_keys)
+                        logger.info(f"Removed {len(depots_with_keys)} depot keys from config.vdf")
                     else:
-                        logger.info("No depot keys to remove from config.vdf")
-                except Exception as e:
-                    result['warnings'].append(f"Config.vdf cleanup failed: {e}")
-                    logger.warning(f"Config.vdf cleanup failed: {e}")
+                        result['warnings'].append("Failed to update config.vdf")
+                else:
+                    logger.info("No depot keys to remove from config.vdf")
+            except Exception as e:
+                result['warnings'].append(f"Config.vdf cleanup failed: {e}")
+                logger.warning(f"Config.vdf cleanup failed: {e}")
         
-        # Step 3: Remove manifest files from depot cache
-        if steam_path_str:
-            steam_path = Path(steam_path_str)
-            if steam_path.is_dir():
-                try:
-                    manifest_stats = remove_manifests_for_appid(str(steam_path), manifest_filenames)
-                    result['stats']['manifest_files_removed'] = manifest_stats.get('removed_count', 0)
-                    if manifest_stats.get('removed_count', 0) > 0:
-                        logger.info(f"Removed {manifest_stats['removed_count']} manifest files from depot cache")
-                except Exception as e:
-                    result['warnings'].append(f"Depot cache cleanup failed: {e}")
-                    logger.warning(f"Depot cache cleanup failed: {e}")
+        # Step 4: Remove manifest files from depot cache
+        if steam_path:
+            try:
+                manifest_stats = remove_manifests_for_appid(str(steam_path), manifest_filenames)
+                result['stats']['manifest_files_removed'] = manifest_stats.get('removed_count', 0)
+                if manifest_stats.get('removed_count', 0) > 0:
+                    logger.info(f"Removed {manifest_stats['removed_count']} manifest files from depot cache")
+            except Exception as e:
+                result['warnings'].append(f"Depot cache cleanup failed: {e}")
+                logger.warning(f"Depot cache cleanup failed: {e}")
         
-        # Step 4: Remove specific AppID folder from data directory
+        # Step 5: Remove specific AppID folder from data directory
         try:
-            script_dir = Path(__file__).parent
             appid_data_folder = script_dir / "data" / app_id
             
             if appid_data_folder.exists():
@@ -276,38 +293,33 @@ def uninstall_specific_appid(config, app_id: str) -> Dict[str, any]:
             result['warnings'].append(f"Data folder cleanup failed: {e}")
             logger.warning(f"Data folder cleanup failed: {e}")
         
-        # Step 5: Remove ACF file
-        if steam_path_str:
-            steam_path = Path(steam_path_str)
-            if steam_path.is_dir():
-                try:
-                    if remove_acf_for_appid(str(steam_path), app_id):
-                        result['stats']['acf_file_removed'] = True
-                        logger.info(f"Removed ACF file for AppID {app_id}")
-                    else:
-                        result['warnings'].append("Failed to remove ACF file")
-                except Exception as e:
-                    result['warnings'].append(f"ACF removal failed: {e}")
-                    logger.warning(f"ACF removal failed: {e}")
+        # Step 6: Remove ACF file
+        if steam_path:
+            try:
+                if remove_acf_for_appid(str(steam_path), app_id):
+                    result['stats']['acf_file_removed'] = True
+                    logger.info(f"Removed ACF file for AppID {app_id}")
+                else:
+                    result['warnings'].append("Failed to remove ACF file")
+            except Exception as e:
+                result['warnings'].append(f"ACF removal failed: {e}")
+                logger.warning(f"ACF removal failed: {e}")
         
-        # Step 6: Remove from GreenLuma
-        greenluma_path_str = config.get('Paths', 'greenluma_path', fallback='')
-        if greenluma_path_str:
-            greenluma_path = Path(greenluma_path_str)
-            if greenluma_path.is_dir():
-                try:
-                    greenluma_result = remove_appid_from_greenluma(str(greenluma_path), app_id, depots)
-                    if greenluma_result['success']:
-                        total_removed = greenluma_result['stats'].get('appids_removed', 0) + greenluma_result['stats'].get('depots_removed', 0)
-                        result['stats']['greenluma_files_removed'] = total_removed
-                        logger.info(f"Removed {total_removed} entries from GreenLuma AppList")
-                    else:
-                        result['warnings'].extend(greenluma_result.get('errors', []))
-                except Exception as e:
-                    result['warnings'].append(f"GreenLuma removal failed: {e}")
-                    logger.warning(f"GreenLuma removal failed: {e}")
+        # Step 7: Remove from GreenLuma
+        if greenluma_path:
+            try:
+                greenluma_result = remove_appid_from_greenluma(str(greenluma_path), app_id, depots)
+                if greenluma_result['success']:
+                    total_removed = greenluma_result['stats'].get('appids_removed', 0) + greenluma_result['stats'].get('depots_removed', 0)
+                    result['stats']['greenluma_files_removed'] = total_removed
+                    logger.info(f"Removed {total_removed} entries from GreenLuma AppList")
+                else:
+                    result['warnings'].extend(greenluma_result.get('errors', []))
+            except Exception as e:
+                result['warnings'].append(f"GreenLuma removal failed: {e}")
+                logger.warning(f"GreenLuma removal failed: {e}")
         
-        # Step 7: Remove from database (do this last)
+        # Step 8: Remove from database (do this last)
         try:
             if db.remove_appid(app_id):
                 result['stats']['database_entry_removed'] = True
@@ -334,5 +346,3 @@ def uninstall_specific_appid(config, app_id: str) -> Dict[str, any]:
         logger.debug("Uninstallation error details:", exc_info=True)
     
     return result
-
-
