@@ -38,13 +38,13 @@ try {
         Write-Host "✓ Windows Defender exclusion added successfully!" -ForegroundColor Green
         
         # Also add exclusion for GreenLuma files specifically
-        $GreenLumaPath = Join-Path $InstallPath "GreenLuma"
+        $GreenLumaPath = Join-Path $InstallPath "_internal\GreenLuma"
         Add-MpPreference -ExclusionPath $GreenLumaPath -Force
         Write-Host "✓ GreenLuma directory exclusion added!" -ForegroundColor Green
         
         # Add process exclusions for main executables
         $MainExePath = Join-Path $InstallPath "SuperSexySteam.exe"
-        $DLLInjectorPath = Join-Path $InstallPath "GreenLuma\NormalMode\DLLInjector.exe"
+        $DLLInjectorPath = Join-Path $InstallPath "_internal\GreenLuma\NormalMode\DLLInjector.exe"
         
         Add-MpPreference -ExclusionProcess $MainExePath -Force
         Add-MpPreference -ExclusionProcess $DLLInjectorPath -Force
@@ -94,9 +94,9 @@ Write-Host "`nStep 5: Verifying extracted files..." -ForegroundColor Cyan
 
 # Define paths for executable and icon files
 $MainExe = Join-Path $InstallPath "SuperSexySteam.exe"
-$MainIcon = Join-Path $InstallPath "sss.ico"
-$SteamIcon = Join-Path $InstallPath "steam.ico"
-$DLLInjector = Join-Path $InstallPath "GreenLuma\NormalMode\DLLInjector.exe"
+$MainIcon = Join-Path $InstallPath "_internal\sss.ico"
+$SteamIcon = Join-Path $InstallPath "_internal\steam.ico"
+$DLLInjector = Join-Path $InstallPath "_internal\GreenLuma\NormalMode\DLLInjector.exe"
 
 # Verify critical files exist
 $CriticalFiles = @($MainExe, $MainIcon, $SteamIcon, $DLLInjector)
