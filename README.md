@@ -4,6 +4,8 @@ A modern, powerful GUI application for managing Steam games with GreenLuma integ
 
 ## Disable Antivirus and Add exclusion for %Appdata%/Roaming/SuperSexySteam before installation
 
+---
+
 ![SuperSexySteam](header.png)
 
 ## ✨ Features
@@ -14,21 +16,6 @@ A modern, powerful GUI application for managing Steam games with GreenLuma integ
 - **Database Tracking**: SQLite database for tracking installed games, depots, and manifests
 - **Steam Integration**: Direct Steam client management and process control
 - **GreenLuma Support**: Full integration with GreenLuma 2025 for DLL injection
-
-### 🔧 Advanced Features
-- **Depot Management**: Automatic depot cache file handling and manifest copying
-- **VDF Configuration**: Automated Steam config.vdf updates with depot decryption keys
-- **ACF Generation**: Dynamic Steam appmanifest ACF file creation
-- **Lua Parsing**: Extract depot information from game data files
-- **System Cleanup**: Comprehensive uninstallation and data cleanup tools
-- **Game Search**: Built-in Steam store search functionality
-
-### 🎨 User Interface
-- **Dark Theme**: Modern dark theme with gold accents
-- **Responsive Design**: Smooth animations and hover effects
-- **Progress Tracking**: Real-time progress bars and status updates
-- **Multi-tab Layout**: Organized interface with separate sections for different functions
-- **Status Monitoring**: Live Steam process monitoring and database statistics
 
 ## 🚀 Installation
 
@@ -66,17 +53,6 @@ A modern, powerful GUI application for managing Steam games with GreenLuma integ
    python SuperSexySteam.py
    ```
 
-## 📋 Dependencies
-
-```
-PySide6          # Modern Qt6 GUI framework
-steam            # Steam API client library
-protobuf==3.20.3 # Protocol buffer support
-gevent-eventemitter # Event handling
-vdf              # Valve Data Format parser
-requests         # HTTP requests for Steam API
-```
-
 ## 🎮 Usage
 
 ### First Run Configuration
@@ -87,7 +63,7 @@ requests         # HTTP requests for Steam API
 
 ### Installing Games
 1. **Search for games** using the built-in Steam search
-2. **Get your Manifest and Lua files** 
+2. **Get your Manifest and Lua files** You need to own the game to get these files
 3. **Drag and Drop them** to begin the automated process:
    - Parses depot information from .lua files
    - Copies manifest files to Steam depot cache
@@ -150,7 +126,7 @@ The installer will:
 - Check for Steam process conflicts
 
 #### Antivirus Issues
-- Add an exclusion for your antivirus to %AppData%\SuperSexySteam
+- Add an exclusion for your antivirus to %AppData%/Roaming/SuperSexySteam
 
 ## 🤝 Contributing: Free to contribute for any features you want to add
 
@@ -171,6 +147,6 @@ The developers are not responsible for any misuse of this software.
 
 - **Issues**: [GitHub Issues](https://github.com/PSSGAMER/SuperSexySteam/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/PSSGAMER/SuperSexySteam/discussions)
-- **Documentation**: [Project Wiki](https://github.com/PSSGAMER/SuperSexySteam/wiki)
+- **Documentation**: [Project Wiki](https://github.com/PSSGAMER/SuperSexySteam/wiki) (WIP)
 
 ---
