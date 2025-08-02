@@ -932,7 +932,9 @@ class ConfirmationOverlay(QDialog):
         self.background_overlay = QWidget()
         self.background_overlay.setStyleSheet(f"""
             QWidget {{
-                background: rgba(0, 0, 0, 180);
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+                    stop:0 rgba(10, 10, 10, 180),
+                    stop:1 rgba(26, 26, 26, 180));
             }}
         """)
         main_layout.addWidget(self.background_overlay)
