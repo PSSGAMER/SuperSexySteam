@@ -1,6 +1,6 @@
 # SuperSexySteam 🎮
 
-A modern, powerful GUI application for managing Steam games with GreenLuma integration. SuperSexySteam provides a sleek PySide6 interface for installing, managing, and playing Steam games with comprehensive depot management capabilities.
+A modern, powerful GUI application for managing Steam games with GreenLuma integration.
 
 ## Disable Antivirus and Add exclusion for %Appdata%/Roaming/SuperSexySteam before installation
 
