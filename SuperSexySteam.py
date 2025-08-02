@@ -1528,6 +1528,7 @@ class DropZone(GradientFrame):
     def __init__(self, parent=None):
         super().__init__(parent, [Theme.SECONDARY_DARK, Theme.TERTIARY_DARK])
         self.setAcceptDrops(True)
+        self.is_hovering = False
         self.setup_ui()
         
         # Animation for hover effect
@@ -1578,25 +1579,40 @@ class DropZone(GradientFrame):
     def dragEnterEvent(self, event):
         if event.mimeData().hasUrls():
             event.acceptProposedAction()
+            self.is_hovering = True
             self.setStyleSheet(f"""
-                QFrame {{
+                DropZone {{
                     background: qlineargradient(x1:0, y1:0, x2:0, y2:1, 
-                        stop:0 {Theme.GOLD_PRIMARY}33, 
-                        stop:1 {Theme.GOLD_DARK}33);
-                    border: 2px dashed {Theme.GOLD_PRIMARY};
+                        stop:0 rgba(255, 215, 0, 0.3), 
+                        stop:1 rgba(184, 134, 11, 0.3));
+                    border: 2px solid {Theme.GOLD_PRIMARY};
                     border-radius: 12px;
                 }}
             """)
+            self.update()
     
     def dragLeaveEvent(self, event):
+        self.is_hovering = False
         self.setStyleSheet("")
+        self.update()
         
     def dropEvent(self, event):
+        self.is_hovering = False
         self.setStyleSheet("")
+        self.update()
         if event.mimeData().hasUrls():
             files = [url.toLocalFile() for url in event.mimeData().urls()]
             self.files_dropped.emit(files)
             event.acceptProposedAction()
+    
+    def paintEvent(self, event):
+        """Override paint event to disable gradient when hovering"""
+        if self.is_hovering:
+            # Let the stylesheet handle the painting when hovering
+            super(QFrame, self).paintEvent(event)
+        else:
+            # Use normal gradient painting when not hovering
+            super().paintEvent(event)
 
 
 class StatusBar(QStatusBar):
