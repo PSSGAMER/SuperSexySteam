@@ -4,9 +4,11 @@
 Write-Host "=== SuperSexySteam Build Script ===" -ForegroundColor Green
 Write-Host "Starting build process..." -ForegroundColor Yellow
 
-# Get the script location
-$ScriptLocation = Split-Path -Parent $MyInvocation.MyCommand.Path
-Set-Location $ScriptLocation
+# Get the script location (buildtools folder)
+$BuildToolsLocation = Split-Path -Parent $MyInvocation.MyCommand.Path
+# Get the project root (parent of buildtools)
+$ProjectRoot = Split-Path -Parent $BuildToolsLocation
+Set-Location $ProjectRoot
 
 # Step 1: Create virtual environment
 Write-Host "`nStep 1: Creating virtual environment..." -ForegroundColor Cyan
@@ -88,10 +90,11 @@ if (-not (Test-Path "dist\SuperSexySteam")) {
 # Create zip with compression level "Store" (no compression)
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $CompressionLevel = [System.IO.Compression.CompressionLevel]::NoCompression
-[System.IO.Compression.ZipFile]::CreateFromDirectory("$ScriptLocation\dist\SuperSexySteam", "$ScriptLocation\release.zip", $CompressionLevel, $false)
+$ReleaseZipPath = Join-Path $BuildToolsLocation "release.zip"
+[System.IO.Compression.ZipFile]::CreateFromDirectory("$ProjectRoot\dist\SuperSexySteam", $ReleaseZipPath, $CompressionLevel, $false)
 
-if (Test-Path "release.zip") {
-    $ZipSize = (Get-Item "release.zip").Length / 1MB
+if (Test-Path $ReleaseZipPath) {
+    $ZipSize = (Get-Item $ReleaseZipPath).Length / 1MB
     Write-Host "release.zip created successfully! Size: $([math]::Round($ZipSize, 2)) MB" -ForegroundColor Green
 } else {
     Write-Host "Failed to create release.zip!" -ForegroundColor Red
@@ -100,7 +103,7 @@ if (Test-Path "release.zip") {
 
 # Step 8: Create distribution package
 Write-Host "`nStep 8: Creating distribution package..." -ForegroundColor Cyan
-$DistributionZip = "$ScriptLocation\SuperSexySteam_Build1_Distribution.zip"
+$DistributionZip = Join-Path $BuildToolsLocation "SuperSexySteam.zip"
 
 if (Test-Path $DistributionZip) {
     Remove-Item $DistributionZip
@@ -108,12 +111,17 @@ if (Test-Path $DistributionZip) {
 }
 
 # Check if required files exist
-$FilesToPackage = @("release.zip", "install.ps1", "install.bat")
+$FilesToPackage = @(
+    @{Source = "release.zip"; Target = "release.zip"},
+    @{Source = "install.ps1"; Target = "install.ps1"},
+    @{Source = "install.bat"; Target = "install.bat"}
+)
 $MissingFiles = @()
 
-foreach ($file in $FilesToPackage) {
-    if (-not (Test-Path $file)) {
-        $MissingFiles += $file
+foreach ($fileInfo in $FilesToPackage) {
+    $filePath = Join-Path $BuildToolsLocation $fileInfo.Source
+    if (-not (Test-Path $filePath)) {
+        $MissingFiles += $fileInfo.Source
     }
 }
 
@@ -129,14 +137,15 @@ try {
     
     $archive = [System.IO.Compression.ZipFile]::Open($DistributionZip, [System.IO.Compression.ZipArchiveMode]::Create)
     
-    foreach ($file in $FilesToPackage) {
-        $entry = $archive.CreateEntry($file, [System.IO.Compression.CompressionLevel]::NoCompression)
+    foreach ($fileInfo in $FilesToPackage) {
+        $sourceFile = Join-Path $BuildToolsLocation $fileInfo.Source
+        $entry = $archive.CreateEntry($fileInfo.Target, [System.IO.Compression.CompressionLevel]::NoCompression)
         $entryStream = $entry.Open()
-        $fileStream = [System.IO.File]::OpenRead("$ScriptLocation\$file")
+        $fileStream = [System.IO.File]::OpenRead($sourceFile)
         $fileStream.CopyTo($entryStream)
         $fileStream.Close()
         $entryStream.Close()
-        Write-Host "  ✓ Added $file to distribution package" -ForegroundColor Green
+        Write-Host "  ✓ Added $($fileInfo.Source) to distribution package" -ForegroundColor Green
     }
     
     $archive.Dispose()
@@ -144,6 +153,14 @@ try {
     if (Test-Path $DistributionZip) {
         $DistZipSize = (Get-Item $DistributionZip).Length / 1MB
         Write-Host "Distribution package created successfully! Size: $([math]::Round($DistZipSize, 2)) MB" -ForegroundColor Green
+        
+        # Clean up release.zip since it's now included in the distribution package
+        Write-Host "Cleaning up release.zip..." -ForegroundColor Cyan
+        $ReleaseZipPath = Join-Path $BuildToolsLocation "release.zip"
+        if (Test-Path $ReleaseZipPath) {
+            Remove-Item $ReleaseZipPath
+            Write-Host "  ✓ release.zip removed successfully" -ForegroundColor Green
+        }
     } else {
         Write-Host "Failed to create distribution package!" -ForegroundColor Red
         exit 1
@@ -155,10 +172,9 @@ try {
 
 # Step 9: Build summary
 Write-Host "`n=== Build Summary ===" -ForegroundColor Green
-Write-Host "Build Name: Build 1" -ForegroundColor White
-Write-Host "Build Location: $ScriptLocation\dist\SuperSexySteam" -ForegroundColor White
-Write-Host "Release Archive: $ScriptLocation\release.zip" -ForegroundColor White
-Write-Host "Distribution Package: $ScriptLocation\SuperSexySteam.zip" -ForegroundColor White
+Write-Host "Project Root: $ProjectRoot" -ForegroundColor White
+Write-Host "Build Location: $ProjectRoot\dist\SuperSexySteam" -ForegroundColor White
+Write-Host "Distribution Package: $BuildToolsLocation\SuperSexySteam.zip" -ForegroundColor White
 Write-Host "Build completed successfully!" -ForegroundColor Green
 
 # Deactivate virtual environment

@@ -39,9 +39,9 @@ A modern, powerful GUI application for managing Steam games with GreenLuma integ
 - **GreenLuma 2025** (included in the project)
 
 ### Quick Install
-1. **Download** the latest release or clone the repository
-2. **Unzip**
-2. **Run the installer**: install.bat
+1. **Download** the latest release (`SuperSexySteam.zip`)
+2. **Extract** the zip file to any location
+3. **Run the installer**: `install.bat` (requires administrator privileges)
 
 ### Running From Source
 1. **Clone the repository**:
@@ -108,27 +108,37 @@ requests         # HTTP requests for Steam API
 ## 🔧 Build & Distribution
 
 ### Automated Build Process
-SuperSexySteam includes a comprehensive PowerShell build script that handles everything:
+SuperSexySteam includes a comprehensive PowerShell build script located in the `buildtools` directory:
 
 ```powershell
-# Run the automated build script
-.\build.ps1
+# Run the automated build script from project root
+.\buildtools\build.ps1
 ```
 
 **The build script automatically:**
 - Creates a clean virtual environment
 - Installs all dependencies from requirements.txt
 - Builds the executable using PyInstaller
-- Packages everything into a release.zip
-- Creates a complete distribution package
+- Creates a release.zip in the buildtools folder
+- Packages everything into a distribution-ready SuperSexySteam.zip
+- Cleans up temporary files
+
+### Distribution Package Structure
+The build process creates `buildtools\SuperSexySteam.zip` containing:
+- `release.zip` - The main application files
+- `install.ps1` - PowerShell installation script  
+- `install.bat` - Batch wrapper for installation with admin privileges
 
 ### Installation from Build
-After building, users can install using:
+After building, users can install by:
+1. Extracting the `SuperSexySteam.zip` file
+2. Running `install.bat` (which launches `install.ps1` with admin privileges)
 
-```powershell
-# Extract and install to system
-.\install.ps1
-```
+The installer will:
+- Add Windows Defender exclusions
+- Extract files to `%AppData%\Roaming\SuperSexySteam`
+- Create desktop shortcuts
+- Set up the application for immediate use
 
 ## 🐛 Troubleshooting
 

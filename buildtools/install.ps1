@@ -16,7 +16,7 @@ if (-not $isAdmin) {
 
 Write-Host "Running with administrator privileges." -ForegroundColor Green
 
-# Get the script location
+# Get the script location (where the user extracted the distribution package)
 $ScriptLocation = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $ScriptLocation
 
@@ -89,8 +89,34 @@ try {
     exit 1
 }
 
-# Step 5: Verify extracted files
-#WIP
+# Step 5: Verify extracted files and define paths
+Write-Host "`nStep 5: Verifying extracted files..." -ForegroundColor Cyan
+
+# Define paths for executable and icon files
+$MainExe = Join-Path $InstallPath "SuperSexySteam.exe"
+$MainIcon = Join-Path $InstallPath "sss.ico"
+$SteamIcon = Join-Path $InstallPath "steam.ico"
+$DLLInjector = Join-Path $InstallPath "GreenLuma\NormalMode\DLLInjector.exe"
+
+# Verify critical files exist
+$CriticalFiles = @($MainExe, $MainIcon, $SteamIcon, $DLLInjector)
+$MissingFiles = @()
+
+foreach ($file in $CriticalFiles) {
+    if (-not (Test-Path $file)) {
+        $MissingFiles += $file
+    }
+}
+
+if ($MissingFiles.Count -gt 0) {
+    Write-Host "⚠ Some files are missing after extraction:" -ForegroundColor Yellow
+    foreach ($missing in $MissingFiles) {
+        Write-Host "  - $missing" -ForegroundColor Red
+    }
+    Write-Host "Installation will continue, but some shortcuts may not work properly." -ForegroundColor Yellow
+} else {
+    Write-Host "✓ All critical files verified successfully!" -ForegroundColor Green
+}
 
 
 # Step 6: Create desktop shortcuts
