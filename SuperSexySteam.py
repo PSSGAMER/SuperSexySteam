@@ -75,11 +75,24 @@ class Theme:
     
     @staticmethod
     def get_button_style(gradient_color=None, text_color=None):
-        """Get modern button styling with gradients and hover effects"""
+        """Get modern button styling with gradients and smooth hover effects (no transforms)"""
         if gradient_color is None:
             gradient_color = Theme.GOLD_GRADIENT
         if text_color is None:
             text_color = Theme.PRIMARY_DARK
+            
+        # Determine hover colors based on the base gradient
+        hover_gradient = gradient_color
+        if gradient_color == Theme.GOLD_GRADIENT:
+            hover_gradient = f"qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 {Theme.GOLD_SECONDARY}, stop:1 {Theme.GOLD_PRIMARY})"
+        elif gradient_color == Theme.BLUE_GRADIENT:
+            hover_gradient = f"qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #00e6ff, stop:0.5 #00b3e6, stop:1 #0080b3)"
+        elif gradient_color == Theme.ACCENT_RED:
+            hover_gradient = "#f44336"
+        elif gradient_color == Theme.ACCENT_GREEN:
+            hover_gradient = "#4caf50"
+        elif gradient_color == Theme.ACCENT_ORANGE:
+            hover_gradient = "#ff9800"
             
         return f"""
         QPushButton {{
@@ -92,7 +105,8 @@ class Theme:
             font-size: 14px;
         }}
         QPushButton:hover {{
-            background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 {Theme.GOLD_SECONDARY}, stop:1 {Theme.GOLD_PRIMARY});
+            background: {hover_gradient};
+            border: 1px solid rgba(255, 255, 255, 0.2);
         }}
         QPushButton:pressed {{
             background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 {Theme.GOLD_DARK}, stop:1 {Theme.GOLD_PRIMARY});
@@ -137,47 +151,133 @@ class Theme:
 
 
 class AnimatedButton(QPushButton):
-    """Custom button with smooth hover animations"""
+    """Custom button with smooth hover animations using proper Qt geometry animations"""
     
     def __init__(self, text, parent=None):
         super().__init__(text, parent)
-        self.default_style = Theme.get_button_style()
-        self.setStyleSheet(self.default_style)
         
-        # Animation setup
-        self.animation = QPropertyAnimation(self, b"geometry")
-        self.animation.setDuration(Theme.HOVER_ANIMATION_DURATION)
-        self.animation.setEasingCurve(QEasingCurve.Type.OutCubic)
+        # Set up size policies for better layout handling
+        self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         
-        self.original_geometry = None
+        # Store original geometry for animations
+        self.is_hovered = False
+        self.is_pressed = False
+        self.base_size = None
+        
+        # Animation setup for smooth scaling
+        self.hover_animation = QPropertyAnimation(self, b"geometry")
+        self.hover_animation.setDuration(Theme.HOVER_ANIMATION_DURATION)
+        self.hover_animation.setEasingCurve(QEasingCurve.Type.OutCubic)
+        
+        self.press_animation = QPropertyAnimation(self, b"geometry")
+        self.press_animation.setDuration(100)
+        self.press_animation.setEasingCurve(QEasingCurve.Type.OutCubic)
+        
+        # Apply CSS styling without transforms
+        self.update_style()
+        
+        # Set a minimum size to prevent layout issues
+        self.setMinimumSize(120, 40)
+        
+    def update_style(self):
+        """Update button style with CSS-based effects (no transforms)"""
+        style = f"""
+        QPushButton {{
+            background: {Theme.GOLD_GRADIENT};
+            color: {Theme.PRIMARY_DARK};
+            border: none;
+            border-radius: 8px;
+            padding: 12px 24px;
+            font-weight: bold;
+            font-size: 14px;
+        }}
+        QPushButton:hover {{
+            background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 {Theme.GOLD_SECONDARY}, stop:1 {Theme.GOLD_PRIMARY});
+            border: 2px solid rgba(255, 237, 78, 0.3);
+        }}
+        QPushButton:pressed {{
+            background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 {Theme.GOLD_DARK}, stop:1 {Theme.GOLD_PRIMARY});
+            border: 2px solid rgba(184, 134, 11, 0.5);
+        }}
+        QPushButton:disabled {{
+            background: {Theme.SURFACE_DARK};
+            color: {Theme.TEXT_MUTED};
+        }}
+        """
+        self.setStyleSheet(style)
+        
+    def showEvent(self, event):
+        """Handle initial show to store base size"""
+        super().showEvent(event)
+        if self.base_size is None:
+            self.base_size = self.size()
+        
+    def resizeEvent(self, event):
+        """Handle resize events properly"""
+        super().resizeEvent(event)
+        # Update base size when widget is resized by layout
+        if not self.is_hovered and not self.is_pressed:
+            self.base_size = event.size()
         
     def enterEvent(self, event):
-        """Animate button on hover"""
-        if self.original_geometry is None:
-            self.original_geometry = self.geometry()
-        
-        # Slightly grow the button
-        new_geometry = QRect(
-            self.original_geometry.x() - 2,
-            self.original_geometry.y() - 2,
-            self.original_geometry.width() + 4,
-            self.original_geometry.height() + 4
-        )
-        
-        self.animation.setStartValue(self.geometry())
-        self.animation.setEndValue(new_geometry)
-        self.animation.start()
-        
+        """Handle mouse enter with smooth scaling animation"""
+        if not self.is_hovered and self.isEnabled():
+            self.is_hovered = True
+            self.animate_scale(1.03)
         super().enterEvent(event)
     
     def leaveEvent(self, event):
-        """Animate button when hover ends"""
-        if self.original_geometry:
-            self.animation.setStartValue(self.geometry())
-            self.animation.setEndValue(self.original_geometry)
-            self.animation.start()
-        
+        """Handle mouse leave with smooth return to normal size"""
+        if self.is_hovered:
+            self.is_hovered = False
+            self.is_pressed = False
+            self.animate_scale(1.0)
         super().leaveEvent(event)
+        
+    def mousePressEvent(self, event):
+        """Handle mouse press with subtle scale down"""
+        if not self.is_pressed and self.isEnabled():
+            self.is_pressed = True
+            self.animate_scale(0.97)
+        super().mousePressEvent(event)
+        
+    def mouseReleaseEvent(self, event):
+        """Handle mouse release"""
+        if self.is_pressed:
+            self.is_pressed = False
+            # Return to hover state if still hovering, otherwise normal
+            scale = 1.03 if self.is_hovered else 1.0
+            self.animate_scale(scale)
+        super().mouseReleaseEvent(event)
+        
+    def animate_scale(self, scale_factor):
+        """Animate button scaling with proper geometry handling"""
+        if self.base_size is None:
+            self.base_size = self.size()
+            
+        current_rect = self.geometry()
+        
+        # Calculate new size
+        new_width = int(self.base_size.width() * scale_factor)
+        new_height = int(self.base_size.height() * scale_factor)
+        
+        # Calculate position to center the scaling
+        width_diff = new_width - current_rect.width()
+        height_diff = new_height - current_rect.height()
+        
+        new_x = current_rect.x() - width_diff // 2
+        new_y = current_rect.y() - height_diff // 2
+        
+        new_rect = QRect(new_x, new_y, new_width, new_height)
+        
+        # Stop any running animation
+        if self.hover_animation.state() == QPropertyAnimation.State.Running:
+            self.hover_animation.stop()
+            
+        # Animate to new geometry
+        self.hover_animation.setStartValue(current_rect)
+        self.hover_animation.setEndValue(new_rect)
+        self.hover_animation.start()
 
 
 class GradientFrame(QFrame):
@@ -290,6 +390,7 @@ class InstalledGameWidget(GradientFrame):
             }}
             QPushButton:hover {{
                 background: #f44336;
+                border: 1px solid rgba(255, 255, 255, 0.2);
             }}
             QPushButton:pressed {{
                 background: #d32f2f;
@@ -385,7 +486,11 @@ class InstalledGamesDialog(QDialog):
                 font-size: 12px;
             }}
             QPushButton:hover {{
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 {Theme.ACCENT_BLUE}, stop:1 #0099cc);
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #00e6ff, stop:0.5 #00b3e6, stop:1 #0080b3);
+                border: 1px solid rgba(255, 255, 255, 0.2);
+            }}
+            QPushButton:pressed {{
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #006699, stop:1 #0099cc);
             }}
         """)
         self.refresh_button.clicked.connect(self.load_games)
@@ -448,6 +553,7 @@ class InstalledGamesDialog(QDialog):
             }}
             QPushButton:hover {{
                 background: #f44336;
+                border: 1px solid rgba(255, 255, 255, 0.2);
             }}
             QPushButton:pressed {{
                 background: #d32f2f;
@@ -688,6 +794,7 @@ class GameResultWidget(GradientFrame):
             }}
             QPushButton:hover {{
                 background: #4caf50;
+                border: 1px solid rgba(255, 255, 255, 0.2);
             }}
             QPushButton:pressed {{
                 background: #388e3c;
