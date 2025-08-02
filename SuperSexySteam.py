@@ -1119,108 +1119,6 @@ class SearchDialog(QDialog):
         # Reset status after 3 seconds
         QTimer.singleShot(3000, lambda: self.status_label.setText("Enter a game name and click search"))
 
-# --- End of content from search_dialog.py ---
-
-
-class StatsWidget(GradientFrame):
-    """Animated statistics display widget"""
-    
-    def __init__(self, parent=None):
-        super().__init__(parent, [Theme.SURFACE_DARK, Theme.TERTIARY_DARK])
-        self.setup_ui()
-        
-    def setup_ui(self):
-        layout = QVBoxLayout(self)
-        layout.setSpacing(12)
-        layout.setContentsMargins(20, 20, 20, 20)
-        
-        # Title
-        title = QLabel("Database Statistics")
-        title.setStyleSheet(f"""
-            QLabel {{
-                color: {Theme.GOLD_PRIMARY};
-                font-size: 18px;
-                font-weight: bold;
-                margin-bottom: 10px;
-            }}
-        """)
-        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(title)
-        
-        # Stats container
-        stats_layout = QGridLayout()
-        
-        # Create stat items
-        self.total_games_label = self.create_stat_item("Games", "0")
-        self.total_depots_label = self.create_stat_item("Depots", "0")
-        self.total_manifests_label = self.create_stat_item("Manifests", "0")
-        self.database_size_label = self.create_stat_item("Database Size", "0 KB")
-        
-        # Add to grid
-        stats_layout.addWidget(self.total_games_label, 0, 0)
-        stats_layout.addWidget(self.total_depots_label, 0, 1)
-        stats_layout.addWidget(self.total_manifests_label, 1, 0)
-        stats_layout.addWidget(self.database_size_label, 1, 1)
-        
-        layout.addLayout(stats_layout)
-        
-    def create_stat_item(self, label_text, value_text):
-        """Create a single statistic item"""
-        container = QFrame()
-        container.setStyleSheet(f"""
-            QFrame {{
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:1, 
-                    stop:0 {Theme.TERTIARY_DARK}, 
-                    stop:1 {Theme.SURFACE_DARK});
-                border-radius: 8px;
-                padding: 10px;
-            }}
-        """)
-        
-        layout = QVBoxLayout(container)
-        layout.setContentsMargins(12, 12, 12, 12)
-        
-        # Label
-        label = QLabel(label_text)
-        label.setStyleSheet(f"""
-            QLabel {{
-                color: {Theme.TEXT_SECONDARY};
-                font-size: 12px;
-                font-weight: normal;
-            }}
-        """)
-        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        
-        # Value
-        value = QLabel(value_text)
-        value.setStyleSheet(f"""
-            QLabel {{
-                color: {Theme.TEXT_PRIMARY};
-                font-size: 16px;
-                font-weight: bold;
-            }}
-        """)
-        value.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        
-        layout.addWidget(label)
-        layout.addWidget(value)
-        
-        # Store value label for updates
-        container.value_label = value
-        
-        return container
-        
-    def update_stats(self, stats_data):
-        """Update statistics with animation"""
-        if 'total_games' in stats_data:
-            self.total_games_label.value_label.setText(str(stats_data['total_games']))
-        if 'total_depots' in stats_data:
-            self.total_depots_label.value_label.setText(str(stats_data['total_depots']))
-        if 'total_manifests' in stats_data:
-            self.total_manifests_label.value_label.setText(str(stats_data['total_manifests']))
-        if 'database_size_mb' in stats_data:
-            size_text = f"{stats_data['database_size_mb']:.2f} MB"
-            self.database_size_label.value_label.setText(size_text)
 
 
 class DropZone(GradientFrame):
@@ -1715,7 +1613,6 @@ class MainInterface(QWidget):
         self.status_bar = status_bar
         self.setup_ui()
         self.setup_connections()
-        self.update_stats()
         
     def setup_ui(self):
         layout = QVBoxLayout(self)
@@ -1725,10 +1622,6 @@ class MainInterface(QWidget):
         # Header with logo and image
         header_widget = self.create_header_widget()
         layout.addWidget(header_widget)
-        
-        # Stats widget
-        self.stats_widget = StatsWidget()
-        layout.addWidget(self.stats_widget)
         
         # Drop zone
         self.drop_zone = DropZone()
@@ -1769,19 +1662,6 @@ class MainInterface(QWidget):
         # Secondary buttons
         button_layout = QHBoxLayout()
         button_layout.setSpacing(15)
-        
-        self.refresh_button = AnimatedButton("🔄 Refresh")
-        # Try to set refresh icon
-        try:
-            refresh_icon_path = Path(__file__).parent / "refresh.ico"
-            if refresh_icon_path.exists():
-                self.refresh_button.setIcon(QIcon(str(refresh_icon_path)))
-                self.refresh_button.setText("Refresh")
-        except Exception:
-            pass
-        
-        self.refresh_button.setStyleSheet(Theme.get_button_style(Theme.BLUE_GRADIENT, Theme.TEXT_PRIMARY))
-        button_layout.addWidget(self.refresh_button)
         
         self.search_button = AnimatedButton("Search Games")
         self.search_button.setStyleSheet(Theme.get_button_style(Theme.BLUE_GRADIENT, Theme.TEXT_PRIMARY))
@@ -1864,7 +1744,6 @@ class MainInterface(QWidget):
         """Setup signal connections"""
         self.drop_zone.files_dropped.connect(self.handle_files_dropped)
         self.run_steam_button.clicked.connect(self.launch_steam)
-        self.refresh_button.clicked.connect(self.update_stats)
         self.search_button.clicked.connect(self.open_search_dialog)
         self.installed_button.clicked.connect(self.open_installed_games_dialog)
         self.uninstall_button.clicked.connect(self.uninstall_game)
@@ -1883,7 +1762,6 @@ class MainInterface(QWidget):
             stats = result['stats']
             success_msg = f"{action_verb} AppID {app_id} successfully! ({stats['depots_processed']} depots, {stats['manifests_copied']} manifests)"
             self.status_bar.update_status(success_msg, "success")
-            self.update_stats()
         else:
             error_msg = result.get('error', 'Installation failed')
             if 'errors' in result and result['errors']:
@@ -1902,15 +1780,6 @@ class MainInterface(QWidget):
         else:
             error_msg = '; '.join(result['errors']) if result['errors'] else "Failed to launch Steam"
             self.status_bar.update_status(f"Failed to launch Steam: {error_msg}", "error")
-            
-    def update_stats(self):
-        """Update database statistics"""
-        result = self.logic.get_database_stats()
-        if result['success']:
-            self.stats_widget.update_stats(result['stats'])
-            self.status_bar.update_status("Statistics updated successfully", "success")
-        else:
-            self.status_bar.update_status("Failed to update statistics", "error")
             
     def open_search_dialog(self):
         """Open game search dialog"""
@@ -1933,7 +1802,6 @@ class MainInterface(QWidget):
             
             if result['success']:
                 self.status_bar.update_status(f"AppID {result['app_id']} uninstalled! {result['summary']}", "success")
-                self.update_stats()
             else:
                 self.status_bar.update_status(f"Uninstallation failed: {result['error']}", "error")
                 
@@ -1954,7 +1822,6 @@ class MainInterface(QWidget):
             
             if result['success']:
                 self.status_bar.update_status(f"Data cleared! {result['summary']}", "success")
-                self.update_stats()
             else:
                 self.status_bar.update_status(f"Failed to clear data: {result['error']}", "error")
 
@@ -1972,8 +1839,8 @@ class SuperSexySteamApp(QMainWindow):
     def setup_window(self):
         """Setup main window properties"""
         self.setWindowTitle("SuperSexySteam")
-        self.setMinimumSize(900, 700)
-        self.resize(1000, 800)
+        self.setMinimumSize(700, 500)
+        self.resize(800, 600)
         
         # Set window icon
         try:
