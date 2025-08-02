@@ -894,11 +894,33 @@ class ConfirmationOverlay(QDialog):
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         
-        # Make it fill the parent window
-        if self.parent():
-            self.setGeometry(self.parent().geometry())
-        else:
-            self.resize(800, 600)
+        # Set a fixed size for the overlay to avoid positioning issues
+        self.resize(800, 600)
+        
+        # Always center on screen - this is the most reliable approach
+        self.center_on_screen()
+            
+    def center_on_screen(self):
+        """Center dialog on screen"""
+        try:
+            # Get the screen that contains the parent widget, or primary screen
+            screen = QApplication.primaryScreen()
+            if self.parent() and hasattr(self.parent(), 'window'):
+                # Try to get the screen that contains the parent window
+                parent_window = self.parent().window()
+                if hasattr(parent_window, 'screen') and parent_window.screen():
+                    screen = parent_window.screen()
+            
+            screen_geometry = screen.geometry()
+            
+            # Calculate center position
+            x = (screen_geometry.width() - self.width()) // 2 + screen_geometry.x()
+            y = (screen_geometry.height() - self.height()) // 2 + screen_geometry.y()
+            
+            self.move(x, y)
+        except Exception:
+            # Ultimate fallback positioning
+            self.move(200, 200)
             
     def setup_ui(self):
         """Setup the confirmation dialog UI"""
@@ -922,22 +944,15 @@ class ConfirmationOverlay(QDialog):
         # Create the confirmation card
         self.confirmation_card = GradientFrame()
         self.confirmation_card.setMaximumWidth(500)
+        self.confirmation_card.setMinimumWidth(400)
+        self.confirmation_card.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Minimum)
         
-        # Border color based on dialog type
-        border_color = Theme.GOLD_PRIMARY
-        if self.dialog_type == "error":
-            border_color = Theme.ACCENT_RED
-        elif self.dialog_type == "warning":
-            border_color = Theme.ACCENT_ORANGE
-        elif self.dialog_type == "info":
-            border_color = Theme.ACCENT_BLUE
-            
         self.confirmation_card.setStyleSheet(f"""
             QFrame {{
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1, 
                     stop:0 {Theme.SECONDARY_DARK}, 
                     stop:1 {Theme.TERTIARY_DARK});
-                border: 2px solid {border_color};
+                border: none;
                 border-radius: 16px;
             }}
         """)
@@ -1029,10 +1044,13 @@ class ConfirmationOverlay(QDialog):
             
             # Confirm button
             confirm_bg_color = Theme.ACCENT_RED
+            confirm_pressed_color = "#d32f2f"  # Darker red
             if self.dialog_type == "info":
                 confirm_bg_color = Theme.ACCENT_BLUE
+                confirm_pressed_color = "#0080b3"  # Darker blue
             elif self.dialog_type == "error":
                 confirm_bg_color = Theme.ACCENT_RED
+                confirm_pressed_color = "#d32f2f"  # Darker red
                 
             self.confirm_button = AnimatedButton(self.confirm_text)
             self.confirm_button.setStyleSheet(f"""
@@ -1056,8 +1074,7 @@ class ConfirmationOverlay(QDialog):
                     border: 2px solid rgba(255, 255, 255, 0.4);
                 }}
                 QPushButton:pressed {{
-                    background: {confirm_bg_color};
-                    filter: brightness(0.8);
+                    background: {confirm_pressed_color};
                 }}
             """)
             self.confirm_button.clicked.connect(self.on_confirm)
@@ -1110,73 +1127,63 @@ class ConfirmationOverlay(QDialog):
         self.fade_animation.setDuration(200)
         self.fade_animation.setEasingCurve(QEasingCurve.Type.OutCubic)
         
-        # Scale animation for the card
-        self.scale_animation = QPropertyAnimation(self.confirmation_card, b"geometry")
-        self.scale_animation.setDuration(300)
-        self.scale_animation.setEasingCurve(QEasingCurve.Type.OutBack)
+        # Scale animation for the card - removed as it causes positioning issues
+        # We'll use CSS-based hover effects instead for better reliability
         
     def showEvent(self, event):
         """Animate the dialog entrance"""
         super().showEvent(event)
         
+        # Ensure proper positioning every time the dialog is shown
+        self.center_on_screen()
+        
         # Start with invisible background
         self.background_overlay.setWindowOpacity(0.0)
         
-        # Set initial small scale for card
-        center_x = self.width() // 2
-        center_y = self.height() // 2
-        initial_size = QSize(50, 50)
-        final_size = self.confirmation_card.sizeHint()
-        
-        initial_rect = QRect(
-            center_x - initial_size.width() // 2,
-            center_y - initial_size.height() // 2,
-            initial_size.width(),
-            initial_size.height()
-        )
-        
-        final_rect = QRect(
-            center_x - final_size.width() // 2,
-            center_y - final_size.height() // 2,
-            final_size.width(),
-            final_size.height()
-        )
-        
-        # Start animations
+        # Simple fade in animation - no complex geometry animations
         self.fade_animation.setStartValue(0.0)
         self.fade_animation.setEndValue(1.0)
         self.fade_animation.start()
         
-        # Small delay for scale animation for better effect
-        QTimer.singleShot(50, lambda: self.start_scale_animation(initial_rect, final_rect))
-        
-    def start_scale_animation(self, initial_rect, final_rect):
-        """Start the scale animation with proper geometry"""
-        self.scale_animation.setStartValue(initial_rect)
-        self.scale_animation.setEndValue(final_rect)
-        self.scale_animation.start()
-        
     def hide_with_animation(self):
-        """Animate the dialog exit"""
-        # Fade out animation
+        """Animate the dialog exit and properly close"""
+        # Create a simple fade out animation
         fade_out = QPropertyAnimation(self.background_overlay, b"windowOpacity")
         fade_out.setDuration(150)
         fade_out.setStartValue(1.0)
         fade_out.setEndValue(0.0)
-        fade_out.finished.connect(self.accept)
+        
+        # Connect to proper cleanup and close
+        fade_out.finished.connect(self.close_dialog)
         fade_out.start()
         
-        # Scale down animation
-        current_rect = self.confirmation_card.geometry()
-        center_x = current_rect.center().x()
-        center_y = current_rect.center().y()
-        final_rect = QRect(center_x - 25, center_y - 25, 50, 50)
+        # Store reference to prevent garbage collection
+        self.exit_animation = fade_out
         
-        scale_out = QPropertyAnimation(self.confirmation_card, b"geometry")
-        scale_out.setDuration(150)
-        scale_out.setStartValue(current_rect)
-        scale_out.setEndValue(final_rect)
-        scale_out.start()
+    def close_dialog(self):
+        """Properly close the dialog"""
+        # Clean up animations
+        if hasattr(self, 'fade_animation'):
+            self.fade_animation.stop()
+        if hasattr(self, 'exit_animation'):
+            self.exit_animation.stop()
+            
+        # Ensure the dialog closes
+        try:
+            self.accept()
+        except Exception:
+            # Fallback to direct close if accept fails
+            self.close()
+            
+    def reject(self):
+        """Override reject to ensure proper cleanup"""
+        self.result_confirmed = False
+        self.cancelled.emit()
+        self.close_dialog()
+        
+    def accept(self):
+        """Override accept to ensure proper cleanup"""
+        super().accept()
         
     def on_confirm(self):
         """Handle confirmation"""
@@ -1189,6 +1196,15 @@ class ConfirmationOverlay(QDialog):
         self.result_confirmed = False
         self.cancelled.emit()
         self.hide_with_animation()
+        
+    def closeEvent(self, event):
+        """Handle close event properly"""
+        # Stop any running animations
+        if hasattr(self, 'fade_animation'):
+            self.fade_animation.stop()
+        if hasattr(self, 'exit_animation'):
+            self.exit_animation.stop()
+        event.accept()
         
     def keyPressEvent(self, event):
         """Handle key press events"""
