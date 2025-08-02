@@ -742,66 +742,46 @@ class SuperSexySteamLogic:
     # =============================================================================
     
     @staticmethod
-    def setup_initial_configuration() -> Optional[configparser.ConfigParser]:
+    def load_configuration() -> Optional[configparser.ConfigParser]:
         """
-        Handle first-time setup configuration.
+        Load existing configuration file.
         
         Returns:
-            ConfigParser object if setup successful, None if cancelled
+            ConfigParser object if successful, None if config file not found
         """
-        logger.info("Starting first-time configuration setup")
+        logger.debug("Loading application configuration")
+        config_file = Path('config.ini')
+        config = configparser.ConfigParser()
         
-        from SuperSexySteam import PathEntryDialog
-        import customtkinter as ctk
-        import sys
-        
-        setup_root = ctk.CTk()
-        setup_root.withdraw()
-        
-        logger.info("config.ini not found. Starting first-time setup.")
-        
-        # Steam path setup
-        logger.debug("Prompting user for Steam installation directory")
-        steam_dialog = PathEntryDialog(
-            setup_root, 
-            "Steam Path Setup", 
-            "Please enter your Steam installation directory.", 
-            "Leave empty for C:\\Program Files (x86)\\Steam"
-        )
-        steam_path = steam_dialog.get_input()
-        if steam_path is None:
-            logger.info("User cancelled Steam path setup")
-            setup_root.destroy()
+        if not config_file.exists():
+            logger.info("Configuration file not found")
             return None
-        if steam_path == "":
-            steam_path = "C:\\Program Files (x86)\\Steam"
-        logger.info(f"Steam path set to: {steam_path}")
+        else:
+            logger.debug(f"Reading configuration from {config_file}")
+            config.read(config_file)
+            logger.info("Configuration loaded successfully")
+            return config
+    
+    @staticmethod
+    def create_configuration(steam_path: str, greenluma_path: str) -> configparser.ConfigParser:
+        """
+        Create and save a new configuration file.
         
-        # GreenLuma path setup
-        logger.debug("Prompting user for GreenLuma directory")
-        gl_dialog = PathEntryDialog(
-            setup_root, 
-            "GreenLuma Path Setup", 
-            "Please enter your GreenLuma directory.", 
-            "Leave empty for default (script's folder)"
-        )
-        gl_path = gl_dialog.get_input()
-        if gl_path is None:
-            logger.info("User cancelled GreenLuma path setup")
-            setup_root.destroy()
-            return None
-        if gl_path == "":
-            base_dir = Path(__file__).parent
-            gl_path = base_dir / "GreenLuma"
-            gl_path.mkdir(exist_ok=True)
-        logger.info(f"GreenLuma path set to: {gl_path}")
+        Args:
+            steam_path: Path to Steam installation
+            greenluma_path: Path to GreenLuma directory
+            
+        Returns:
+            ConfigParser object with the new configuration
+        """
+        logger.info("Creating new configuration file")
         
         # Create and save configuration
         logger.debug("Creating configuration file")
         config = configparser.ConfigParser()
         config['Paths'] = {
             'steam_path': steam_path, 
-            'greenluma_path': str(gl_path)
+            'greenluma_path': str(greenluma_path)
         }
         
         config_file = Path('config.ini')
@@ -811,32 +791,9 @@ class SuperSexySteamLogic:
         
         # Configure the GreenLuma DLLInjector.ini with the paths
         logger.debug("Configuring GreenLuma DLLInjector")
-        configure_greenluma_injector(steam_path, str(gl_path))
-        
-        setup_root.destroy()
-        logger.info("First-time setup completed successfully")
+        configure_greenluma_injector(steam_path, str(greenluma_path))
+        logger.info("Configuration setup completed successfully")
         return config
-    
-    @staticmethod
-    def load_configuration() -> Optional[configparser.ConfigParser]:
-        """
-        Load existing configuration or run setup if needed.
-        
-        Returns:
-            ConfigParser object if successful, None if setup cancelled
-        """
-        logger.debug("Loading application configuration")
-        config_file = Path('config.ini')
-        config = configparser.ConfigParser()
-        
-        if not config_file.exists():
-            logger.info("Configuration file not found, initiating setup")
-            return SuperSexySteamLogic.setup_initial_configuration()
-        else:
-            logger.debug(f"Reading configuration from {config_file}")
-            config.read(config_file)
-            logger.info("Configuration loaded successfully")
-            return config
     
     # =============================================================================
     # --- UTILITY METHODS ---

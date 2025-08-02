@@ -1937,23 +1937,17 @@ class SuperSexySteamApp(QMainWindow):
         
     def on_setup_completed(self, setup_data):
         """Handle setup completion"""
-        # Save configuration
-        config = {
-            'steam_path': setup_data.get('steam_path', ''),
-            'greenluma_path': setup_data.get('greenluma_path', '')
-        }
-        
-        # Create config.ini
         try:
-            config_path = Path(__file__).parent / "config.ini"
-            config_parser = configparser.ConfigParser()
-            config_parser['Paths'] = config
+            # Use the proper create_configuration method which includes DLLInjector.ini setup
+            steam_path = setup_data.get('steam_path', '')
+            greenluma_path = setup_data.get('greenluma_path', '')
             
-            with open(config_path, 'w') as config_file:
-                config_parser.write(config_file)
+            # Import here to avoid circular imports
+            from app_logic import SuperSexySteamLogic
+            config_parser = SuperSexySteamLogic.create_configuration(steam_path, greenluma_path)
                 
             # Initialize logic and show main interface
-            self.logic = SuperSexySteamLogic(config)
+            self.logic = SuperSexySteamLogic(config_parser)
             self.show_main_interface()
             
         except Exception as e:
