@@ -1,8 +1,15 @@
+<div align="center">
+
 # SuperSexySteam 🎮
 
-A modern, powerful GUI application for managing Steam games with GreenLuma integration.
+*A modern, powerful GUI application for managing Steam games with GreenLuma integration*
 
-## Disable Antivirus and Add exclusion for %Appdata%/Roaming/SuperSexySteam before installation
+</div>
+
+---
+
+## ⚠️ **IMPORTANT: Disable Antivirus**
+> **Add an exclusion for `%AppData%\Roaming\SuperSexySteam` before installation**
 
 ---
 
@@ -17,20 +24,31 @@ A modern, powerful GUI application for managing Steam games with GreenLuma integ
 - **Steam Integration**: Direct Steam client management and process control
 - **GreenLuma Support**: Full integration with GreenLuma 2025 for DLL injection
 
+### 🛠️ Planned Features
+- **Auto Updater**: Automatic application updates
+- **Denuvo Token Integration**: Advanced DRM handling
+- **Auto Game Installer & Updater**: Automated game management
+
 ## 🚀 Installation
 
-### Prerequisites
-- **Python 3.8+** (recommended: Python 3.10+)
-- **Windows OS** (primary support)
-- **Steam Client** installed
-- **GreenLuma 2025** (included in the project)
+### 📋 Prerequisites
+| Requirement | Version | Status |
+|-------------|---------|--------|
+| **Python** | 3.8+ (recommended: 3.10+) | Required |
+| **Windows OS** | Primary support | Required |
+| **Steam Client** | Latest | Required |
+| **GreenLuma 2025** | Included in project | Included |
 
-### Quick Install
-1. **Download** the latest release (`SuperSexySteam.zip`)
-2. **Extract** the zip file to any location
-3. **Run the installer**: `install.bat` (requires administrator privileges)
+### ⚡ Quick Install
+1. 📥 **Download** the latest release (`SuperSexySteam.zip`)
+2. 📂 **Extract** the zip file to any location
+3. 🚀 **Run the installer**: `install.bat` (requires administrator privileges)
 
-### Running From Source
+### 💻 Running From Source
+
+<details>
+<summary>Click to expand development setup instructions</summary>
+
 1. **Clone the repository**:
    ```bash
    git clone https://github.com/PSSGAMER/SuperSexySteam.git
@@ -53,37 +71,39 @@ A modern, powerful GUI application for managing Steam games with GreenLuma integ
    python SuperSexySteam.py
    ```
 
+</details>
+
 ## 🎮 Usage
 
-### First Run Configuration
-1. **Launch SuperSexySteam**
-2. **Configure paths** in the settings:
-   - Steam installation directory
-   - GreenLuma path (pre-configured if using included version)
+### 🔧 First Run Configuration
+1. 🚀 **Launch SuperSexySteam**
+2. ⚙️ **Configure paths** in the settings:
+   - 📁 Steam installation directory
+   - 🔧 GreenLuma path (pre-configured if using included version)
 
-### Installing Games
-1. **Search for games** using the built-in Steam search
-2. **Get your Manifest and Lua files** You need to own the game to get these files
-3. **Drag and Drop them** to begin the automated process:
-   - Parses depot information from .lua files
-   - Copies manifest files to Steam depot cache
-   - Updates Steam config.vdf with decryption keys
-   - Generates ACF files for Steam recognition
-   - Configures GreenLuma AppList
-   - Updates database tracking
+### 📦 Installing Games
+1. 🔍 **Search for games** using the built-in Steam search
+2. 📋 **Get your Manifest and Lua files** *(You need to own the game to get these files)*
+3. 🖱️ **Drag and Drop them** to begin the automated process:
+   - 📊 Parses depot information from .lua files
+   - 📁 Copies manifest files to Steam depot cache
+   - 🔑 Updates Steam config.vdf with decryption keys
+   - 📄 Generates ACF files for Steam recognition
+   - 🔧 Configures GreenLuma AppList
+   - 💾 Updates database tracking
 
-### Managing Installed Games
-- **View installed games** in the main interface
-- **Uninstall games** with comprehensive cleanup
+### 🎯 Managing Installed Games
+- 👀 **View installed games** in the main interface
+- 🗑️ **Uninstall games** with comprehensive cleanup
 
-### System Maintenance
-- **Clear all data**: Complete system reset functionality
-- **Selective uninstall**: Remove specific games with full cleanup
+### 🧹 System Maintenance
+- 🔄 **Clear all data**: Complete system reset functionality
+- 🎯 **Selective uninstall**: Remove specific games with full cleanup
 
 
 ## 🔧 Build & Distribution
 
-### Automated Build Process
+### 🔨 Automated Build Process
 SuperSexySteam includes a comprehensive PowerShell build script located in the `buildtools` directory:
 
 ```powershell
@@ -92,61 +112,93 @@ SuperSexySteam includes a comprehensive PowerShell build script located in the `
 ```
 
 **The build script automatically:**
-- Creates a clean virtual environment
-- Installs all dependencies from requirements.txt
-- Builds the executable using PyInstaller
-- Creates a release.zip in the buildtools folder
-- Packages everything into a distribution-ready SuperSexySteam.zip
-- Cleans up temporary files
+- ✨ Creates a clean virtual environment
+- 📦 Installs all dependencies from requirements.txt
+- 🏗️ Builds the executable using PyInstaller
+- 📁 Creates a release.zip in the buildtools folder
+- 🎁 Packages everything into a distribution-ready SuperSexySteam.zip
+- 🧹 Cleans up temporary files
 
-### Distribution Package Structure
+### 📦 Distribution Package Structure
 The build process creates `buildtools\SuperSexySteam.zip` containing:
-- `release.zip` - The main application files
-- `install.ps1` - PowerShell installation script  
-- `install.bat` - Batch wrapper for installation with admin privileges
+| File | Description |
+|------|-------------|
+| `release.zip` | The main application files |
+| `install.ps1` | PowerShell installation script |
+| `install.bat` | Batch wrapper for installation with admin privileges |
 
-### Installation from Build
+### 🚀 Installation from Build
 After building, users can install by:
-1. Extracting the `SuperSexySteam.zip` file
-2. Running `install.bat` (which launches `install.ps1` with admin privileges)
+1. 📂 Extracting the `SuperSexySteam.zip` file
+2. 🚀 Running `install.bat` (which launches `install.ps1` with admin privileges)
 
 The installer will:
-- Add Windows Defender exclusions
-- Extract files to `%AppData%\Roaming\SuperSexySteam`
-- Create desktop shortcuts
-- Set up the application for immediate use
+- 🛡️ Add Windows Defender exclusions
+- 📁 Extract files to `%AppData%\Roaming\SuperSexySteam`
+- 🖥️ Create desktop shortcuts
+- ⚙️ Set up the application for immediate use
 
 ## 🐛 Troubleshooting
 
-### Common Issues
+### ⚠️ Common Issues
 
-#### Steam Not Detected
-- Verify Steam installation path in configuration
-- Ensure Steam.exe is in the specified directory
-- Check for Steam process conflicts
+<details>
+<summary><strong>🔍 Steam Not Detected</strong></summary>
 
-#### Antivirus Issues
-- Add an exclusion for your antivirus to %AppData%/Roaming/SuperSexySteam
+- ✅ Verify Steam installation path in configuration
+- ✅ Ensure Steam.exe is in the specified directory
+- ✅ Check for Steam process conflicts
 
-## 🤝 Contributing: Free to contribute for any features you want to add
+</details>
+
+<details>
+<summary><strong>🛡️ Antivirus Issues</strong></summary>
+
+- ✅ Add an exclusion for your antivirus to `%AppData%\Roaming\SuperSexySteam`
+
+</details>
+
+## 🤝 Contributing
+
+> **Free to contribute for any features you want to add!**
+
+We welcome contributions from the community. Feel free to:
+- 🐛 Report bugs and issues
+- 💡 Suggest new features
+- 🔧 Submit pull requests
+- 📚 Improve documentation
+
+---
 
 ## ⚠️ Disclaimer
 
-**Educational and Research Purpose Only**
+> **Educational and Research Purpose Only**
 
 This software is provided for educational and research purposes. Users are responsible for:
-- **Compliance** with Steam Terms of Service
-- **Respect** for software licensing agreements
-- **Legal use** in their jurisdiction
-- **Understanding** of the tools they use
 
-The developers are not responsible for any misuse of this software.
+| Responsibility | Description |
+|----------------|-------------|
+| **Compliance** | Steam Terms of Service |
+| **Respect** | Software licensing agreements |
+| **Legal Use** | In their jurisdiction |
+| **Understanding** | Of the tools they use |
 
+*The developers are not responsible for any misuse of this software.*
+
+---
 
 ## 📞 Support
 
-- **Issues**: [GitHub Issues](https://github.com/PSSGAMER/SuperSexySteam/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/PSSGAMER/SuperSexySteam/discussions)
-- **Documentation**: [Project Wiki](https://github.com/PSSGAMER/SuperSexySteam/wiki) (WIP)
+| Resource | Link |
+|----------|------|
+| 🐛 **Issues** | [GitHub Issues](https://github.com/PSSGAMER/SuperSexySteam/issues) |
+| 💬 **Discussions** | [GitHub Discussions](https://github.com/PSSGAMER/SuperSexySteam/discussions) |
+| 📚 **Documentation** | [Project Wiki](https://github.com/PSSGAMER/SuperSexySteam/wiki) *(WIP)* |
 
 ---
+
+<div align="center">
+
+**Made with ❤️ for the gaming community**
+
+</div>
