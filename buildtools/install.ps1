@@ -35,12 +35,12 @@ try {
     if (Get-Command "Add-MpPreference" -ErrorAction SilentlyContinue) {
         # Add path exclusion for the installation directory
         Add-MpPreference -ExclusionPath $InstallPath -Force
-        Write-Host "✓ Windows Defender exclusion added successfully!" -ForegroundColor Green
+        Write-Host "[OK] Windows Defender exclusion added successfully!" -ForegroundColor Green
         
         # Also add exclusion for GreenLuma files specifically
         $GreenLumaPath = Join-Path $InstallPath "_internal\GreenLuma"
         Add-MpPreference -ExclusionPath $GreenLumaPath -Force
-        Write-Host "✓ GreenLuma directory exclusion added!" -ForegroundColor Green
+        Write-Host "[OK] GreenLuma directory exclusion added!" -ForegroundColor Green
         
         # Add process exclusions for main executables
         $MainExePath = Join-Path $InstallPath "SuperSexySteam.exe"
@@ -48,14 +48,14 @@ try {
         
         Add-MpPreference -ExclusionProcess $MainExePath -Force
         Add-MpPreference -ExclusionProcess $DLLInjectorPath -Force
-        Write-Host "✓ Process exclusions added for main executables!" -ForegroundColor Green
+        Write-Host "[OK] Process exclusions added for main executables!" -ForegroundColor Green
         
     } else {
-        Write-Host "⚠ Windows Defender PowerShell module not available. Skipping exclusions." -ForegroundColor Yellow
+        Write-Host "WARNING: Windows Defender PowerShell module not available. Skipping exclusions." -ForegroundColor Yellow
         Write-Host "  You may need to manually add exclusions for: $InstallPath" -ForegroundColor Yellow
     }
 } catch {
-    Write-Host "⚠ Failed to add Windows Defender exclusion: $($_.Exception.Message)" -ForegroundColor Yellow
+    Write-Host "WARNING: Failed to add Windows Defender exclusion: $($_.Exception.Message)" -ForegroundColor Yellow
     Write-Host "  Installation will continue, but you may need to manually add exclusions." -ForegroundColor Yellow
 }
 
@@ -109,15 +109,14 @@ foreach ($file in $CriticalFiles) {
 }
 
 if ($MissingFiles.Count -gt 0) {
-    Write-Host "⚠ Some files are missing after extraction:" -ForegroundColor Yellow
+    Write-Host "WARNING: Some files are missing after extraction:" -ForegroundColor Yellow
     foreach ($missing in $MissingFiles) {
         Write-Host "  - $missing" -ForegroundColor Red
     }
     Write-Host "Installation will continue, but some shortcuts may not work properly." -ForegroundColor Yellow
 } else {
-    Write-Host "✓ All critical files verified successfully!" -ForegroundColor Green
+    Write-Host "[OK] All critical files verified successfully!" -ForegroundColor Green
 }
-
 
 # Step 6: Create desktop shortcuts
 Write-Host "`nStep 6: Creating desktop shortcuts..." -ForegroundColor Cyan
@@ -134,9 +133,9 @@ $SuperSexySteamShortcut.Description = "SuperSexySteam - Steam Game Manager"
 $SuperSexySteamShortcut.Save()
 
 if (Test-Path (Join-Path $DesktopPath "SuperSexySteam.lnk")) {
-    Write-Host "✓ SuperSexySteam shortcut created successfully!" -ForegroundColor Green
+    Write-Host "[OK] SuperSexySteam shortcut created successfully!" -ForegroundColor Green
 } else {
-    Write-Host "✗ Failed to create SuperSexySteam shortcut!" -ForegroundColor Red
+    Write-Host "[ERROR] Failed to create SuperSexySteam shortcut!" -ForegroundColor Red
 }
 
 # Create Steam (DLLInjector) shortcut
@@ -148,17 +147,17 @@ $SteamShortcut.Description = "Steam with GreenLuma - DLL Injector"
 $SteamShortcut.Save()
 
 if (Test-Path (Join-Path $DesktopPath "Steam (GreenLuma).lnk")) {
-    Write-Host "✓ Steam (GreenLuma) shortcut created successfully!" -ForegroundColor Green
+    Write-Host "[OK] Steam (GreenLuma) shortcut created successfully!" -ForegroundColor Green
 } else {
-    Write-Host "✗ Failed to create Steam (GreenLuma) shortcut!" -ForegroundColor Red
+    Write-Host "[ERROR] Failed to create Steam (GreenLuma) shortcut!" -ForegroundColor Red
 }
 
 # Step 7: Installation summary
 Write-Host "`n=== Installation Summary ===" -ForegroundColor Green
 Write-Host "Installation Location: $InstallPath" -ForegroundColor White
 Write-Host "Desktop Shortcuts:" -ForegroundColor White
-Write-Host "  • SuperSexySteam.lnk" -ForegroundColor White
-Write-Host "  • Steam (GreenLuma).lnk" -ForegroundColor White
+Write-Host "  - SuperSexySteam.lnk" -ForegroundColor White
+Write-Host "  - Steam (GreenLuma).lnk" -ForegroundColor White
 
 # Calculate installation size
 $InstallSize = (Get-ChildItem -Recurse $InstallPath | Measure-Object -Property Length -Sum).Sum / 1MB
