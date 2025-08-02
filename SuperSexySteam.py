@@ -665,19 +665,25 @@ class InstalledGamesDialog(QDialog):
         
     def uninstall_game(self, app_id, game_name):
         """Uninstall a specific game"""
-        # Show confirmation dialog
-        reply = QMessageBox.question(
-            self,
-            "Confirm Uninstall",
-            f"Are you sure you want to uninstall '{game_name}' (AppID: {app_id})?\n\n"
-            "This will remove all related files and data.",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No
+        # Show beautiful animated confirmation dialog
+        confirmation = ConfirmationOverlay(
+            title="Confirm Uninstall",
+            message=f"Are you sure you want to uninstall '{game_name}' (AppID: {app_id})?\n\n"
+                   "This will remove all related files and data.",
+            confirm_text="✓ Yes, Uninstall",
+            cancel_text="✗ Cancel",
+            parent=self
         )
         
-        if reply != QMessageBox.StandardButton.Yes:
-            return
-            
+        # Connect the signals
+        confirmation.confirmed.connect(lambda: self.proceed_with_uninstall(app_id, game_name))
+        # If cancelled, nothing happens (dialog just closes)
+        
+        # Show the confirmation dialog
+        confirmation.exec()
+        
+    def proceed_with_uninstall(self, app_id, game_name):
+        """Proceed with the actual uninstallation after confirmation"""
         # Start uninstallation
         self.status_label.setText(f"Uninstalling {game_name}...")
         self.status_label.setStyleSheet(f"color: {Theme.ACCENT_ORANGE}; font-size: 14px;")
@@ -810,6 +816,323 @@ class GameResultWidget(GradientFrame):
         clipboard = QApplication.clipboard()
         clipboard.setText(str(self.game_data['appid']))
         self.appid_copied.emit(str(self.game_data['appid']))
+
+
+class ConfirmationOverlay(QDialog):
+    """Beautiful animated confirmation dialog that matches the app's aesthetic"""
+    
+    confirmed = Signal()
+    cancelled = Signal()
+    
+    def __init__(self, title, message, confirm_text="Yes", cancel_text="No", 
+                 dialog_type="warning", parent=None):
+        super().__init__(parent)
+        self.title = title
+        self.message = message
+        self.confirm_text = confirm_text
+        self.cancel_text = cancel_text
+        self.dialog_type = dialog_type  # "warning", "error", "info"
+        self.result_confirmed = False
+        
+        self.setup_window()
+        self.setup_ui()
+        self.setup_animations()
+        
+    def setup_window(self):
+        """Setup dialog window properties"""
+        self.setModal(True)
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        
+        # Make it fill the parent window
+        if self.parent():
+            self.setGeometry(self.parent().geometry())
+        else:
+            self.resize(800, 600)
+            
+    def setup_ui(self):
+        """Setup the confirmation dialog UI"""
+        # Main layout with transparent background
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        
+        # Semi-transparent background overlay
+        self.background_overlay = QWidget()
+        self.background_overlay.setStyleSheet(f"""
+            QWidget {{
+                background: rgba(0, 0, 0, 180);
+            }}
+        """)
+        main_layout.addWidget(self.background_overlay)
+        
+        # Center the dialog content
+        overlay_layout = QVBoxLayout(self.background_overlay)
+        overlay_layout.addStretch()
+        
+        # Create the confirmation card
+        self.confirmation_card = GradientFrame()
+        self.confirmation_card.setMaximumWidth(500)
+        
+        # Border color based on dialog type
+        border_color = Theme.GOLD_PRIMARY
+        if self.dialog_type == "error":
+            border_color = Theme.ACCENT_RED
+        elif self.dialog_type == "warning":
+            border_color = Theme.ACCENT_ORANGE
+        elif self.dialog_type == "info":
+            border_color = Theme.ACCENT_BLUE
+            
+        self.confirmation_card.setStyleSheet(f"""
+            QFrame {{
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, 
+                    stop:0 {Theme.SECONDARY_DARK}, 
+                    stop:1 {Theme.TERTIARY_DARK});
+                border: 2px solid {border_color};
+                border-radius: 16px;
+            }}
+        """)
+        
+        card_layout = QVBoxLayout(self.confirmation_card)
+        card_layout.setContentsMargins(40, 30, 40, 30)
+        card_layout.setSpacing(25)
+        
+        # Icon based on dialog type
+        icon_text = "⚠️"
+        icon_color = Theme.ACCENT_ORANGE
+        if self.dialog_type == "error":
+            icon_text = "❌"
+            icon_color = Theme.ACCENT_RED
+        elif self.dialog_type == "info":
+            icon_text = "ℹ️"
+            icon_color = Theme.ACCENT_BLUE
+            
+        icon_label = QLabel(icon_text)
+        icon_label.setStyleSheet(f"""
+            QLabel {{
+                color: {icon_color};
+                font-size: 48px;
+            }}
+        """)
+        icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        card_layout.addWidget(icon_label)
+        
+        # Title
+        title_label = QLabel(self.title)
+        title_label.setStyleSheet(f"""
+            QLabel {{
+                color: {Theme.TEXT_PRIMARY};
+                font-size: 24px;
+                font-weight: bold;
+            }}
+        """)
+        title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        title_label.setWordWrap(True)
+        card_layout.addWidget(title_label)
+        
+        # Message
+        message_label = QLabel(self.message)
+        message_label.setStyleSheet(f"""
+            QLabel {{
+                color: {Theme.TEXT_SECONDARY};
+                font-size: 16px;
+                line-height: 1.4;
+            }}
+        """)
+        message_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        message_label.setWordWrap(True)
+        card_layout.addWidget(message_label)
+        
+        # Button layout (only show if it's not an error-only dialog)
+        if self.dialog_type != "error" or self.cancel_text != "No":
+            button_layout = QHBoxLayout()
+            button_layout.setSpacing(15)
+            
+            # Cancel button (if needed)
+            if self.cancel_text and self.cancel_text != "No" or self.dialog_type != "error":
+                self.cancel_button = AnimatedButton(self.cancel_text)
+                self.cancel_button.setStyleSheet(f"""
+                    QPushButton {{
+                        background: {Theme.SURFACE_DARK};
+                        color: {Theme.TEXT_PRIMARY};
+                        border: 2px solid {Theme.TEXT_MUTED};
+                        border-radius: 8px;
+                        padding: 15px 30px;
+                        font-weight: bold;
+                        font-size: 14px;
+                        min-width: 100px;
+                    }}
+                    QPushButton:hover {{
+                        background: {Theme.TERTIARY_DARK};
+                        border: 2px solid {Theme.TEXT_SECONDARY};
+                    }}
+                    QPushButton:pressed {{
+                        background: {Theme.PRIMARY_DARK};
+                    }}
+                """)
+                self.cancel_button.clicked.connect(self.on_cancel)
+                button_layout.addWidget(self.cancel_button)
+            
+            # Confirm button
+            confirm_bg_color = Theme.ACCENT_RED
+            if self.dialog_type == "info":
+                confirm_bg_color = Theme.ACCENT_BLUE
+            elif self.dialog_type == "error":
+                confirm_bg_color = Theme.ACCENT_RED
+                
+            self.confirm_button = AnimatedButton(self.confirm_text)
+            self.confirm_button.setStyleSheet(f"""
+                QPushButton {{
+                    background: {confirm_bg_color};
+                    color: {Theme.TEXT_PRIMARY};
+                    border: none;
+                    border-radius: 8px;
+                    padding: 15px 30px;
+                    font-weight: bold;
+                    font-size: 14px;
+                    min-width: 100px;
+                }}
+                QPushButton:hover {{
+                    background: {confirm_bg_color};
+                    border: 2px solid rgba(255, 255, 255, 0.2);
+                }}
+                QPushButton:pressed {{
+                    background: {confirm_bg_color};
+                    filter: brightness(0.8);
+                }}
+            """)
+            self.confirm_button.clicked.connect(self.on_confirm)
+            button_layout.addWidget(self.confirm_button)
+            
+            card_layout.addLayout(button_layout)
+        else:
+            # Error dialog with just OK button
+            self.confirm_button = AnimatedButton("OK")
+            self.confirm_button.setStyleSheet(f"""
+                QPushButton {{
+                    background: {Theme.ACCENT_RED};
+                    color: {Theme.TEXT_PRIMARY};
+                    border: none;
+                    border-radius: 8px;
+                    padding: 15px 30px;
+                    font-weight: bold;
+                    font-size: 14px;
+                    min-width: 100px;
+                }}
+                QPushButton:hover {{
+                    background: #f44336;
+                    border: 2px solid rgba(255, 255, 255, 0.2);
+                }}
+                QPushButton:pressed {{
+                    background: #d32f2f;
+                }}
+            """)
+            self.confirm_button.clicked.connect(self.on_confirm)
+            card_layout.addWidget(self.confirm_button)
+        
+        # Center the card horizontally
+        center_layout = QHBoxLayout()
+        center_layout.addStretch()
+        center_layout.addWidget(self.confirmation_card)
+        center_layout.addStretch()
+        
+        overlay_layout.addLayout(center_layout)
+        overlay_layout.addStretch()
+        
+    def setup_animations(self):
+        """Setup smooth entrance and exit animations"""
+        # Fade in animation for background
+        self.fade_animation = QPropertyAnimation(self.background_overlay, b"windowOpacity")
+        self.fade_animation.setDuration(200)
+        self.fade_animation.setEasingCurve(QEasingCurve.Type.OutCubic)
+        
+        # Scale animation for the card
+        self.scale_animation = QPropertyAnimation(self.confirmation_card, b"geometry")
+        self.scale_animation.setDuration(300)
+        self.scale_animation.setEasingCurve(QEasingCurve.Type.OutBack)
+        
+    def showEvent(self, event):
+        """Animate the dialog entrance"""
+        super().showEvent(event)
+        
+        # Start with invisible background
+        self.background_overlay.setWindowOpacity(0.0)
+        
+        # Set initial small scale for card
+        center_x = self.width() // 2
+        center_y = self.height() // 2
+        initial_size = QSize(50, 50)
+        final_size = self.confirmation_card.sizeHint()
+        
+        initial_rect = QRect(
+            center_x - initial_size.width() // 2,
+            center_y - initial_size.height() // 2,
+            initial_size.width(),
+            initial_size.height()
+        )
+        
+        final_rect = QRect(
+            center_x - final_size.width() // 2,
+            center_y - final_size.height() // 2,
+            final_size.width(),
+            final_size.height()
+        )
+        
+        # Start animations
+        self.fade_animation.setStartValue(0.0)
+        self.fade_animation.setEndValue(1.0)
+        self.fade_animation.start()
+        
+        # Small delay for scale animation for better effect
+        QTimer.singleShot(50, lambda: self.start_scale_animation(initial_rect, final_rect))
+        
+    def start_scale_animation(self, initial_rect, final_rect):
+        """Start the scale animation with proper geometry"""
+        self.scale_animation.setStartValue(initial_rect)
+        self.scale_animation.setEndValue(final_rect)
+        self.scale_animation.start()
+        
+    def hide_with_animation(self):
+        """Animate the dialog exit"""
+        # Fade out animation
+        fade_out = QPropertyAnimation(self.background_overlay, b"windowOpacity")
+        fade_out.setDuration(150)
+        fade_out.setStartValue(1.0)
+        fade_out.setEndValue(0.0)
+        fade_out.finished.connect(self.accept)
+        fade_out.start()
+        
+        # Scale down animation
+        current_rect = self.confirmation_card.geometry()
+        center_x = current_rect.center().x()
+        center_y = current_rect.center().y()
+        final_rect = QRect(center_x - 25, center_y - 25, 50, 50)
+        
+        scale_out = QPropertyAnimation(self.confirmation_card, b"geometry")
+        scale_out.setDuration(150)
+        scale_out.setStartValue(current_rect)
+        scale_out.setEndValue(final_rect)
+        scale_out.start()
+        
+    def on_confirm(self):
+        """Handle confirmation"""
+        self.result_confirmed = True
+        self.confirmed.emit()
+        self.hide_with_animation()
+        
+    def on_cancel(self):
+        """Handle cancellation"""
+        self.result_confirmed = False
+        self.cancelled.emit()
+        self.hide_with_animation()
+        
+    def keyPressEvent(self, event):
+        """Handle key press events"""
+        if event.key() == Qt.Key.Key_Escape:
+            self.on_cancel()
+        elif event.key() == Qt.Key.Key_Return or event.key() == Qt.Key.Key_Enter:
+            self.on_confirm()
+        else:
+            super().keyPressEvent(event)
 
 
 class SearchDialog(QDialog):
@@ -1807,23 +2130,33 @@ class MainInterface(QWidget):
                 
     def clear_data(self):
         """Clear all application data"""
-        reply = QMessageBox.question(
-            self, 
-            "Clear All Data", 
-            "Are you sure you want to clear all application data?\n\nThis will remove all installed games and database entries.",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No
+        confirmation = ConfirmationOverlay(
+            title="Clear All Data",
+            message="Are you sure you want to clear all application data?\n\n"
+                   "This will remove all installed games and database entries.",
+            confirm_text="🗑️ Yes, Clear All",
+            cancel_text="✗ Cancel",
+            dialog_type="warning",
+            parent=self
         )
         
-        if reply == QMessageBox.StandardButton.Yes:
-            self.status_bar.update_status("Clearing all data...", "loading")
-            
-            result = self.logic.clear_all_application_data()
-            
-            if result['success']:
-                self.status_bar.update_status(f"Data cleared! {result['summary']}", "success")
-            else:
-                self.status_bar.update_status(f"Failed to clear data: {result['error']}", "error")
+        # Connect the signals
+        confirmation.confirmed.connect(self.proceed_with_clear_data)
+        # If cancelled, nothing happens
+        
+        # Show the confirmation dialog
+        confirmation.exec()
+        
+    def proceed_with_clear_data(self):
+        """Proceed with clearing all data after confirmation"""
+        self.status_bar.update_status("Clearing all data...", "loading")
+        
+        result = self.logic.clear_all_application_data()
+        
+        if result['success']:
+            self.status_bar.update_status(f"Data cleared! {result['summary']}", "success")
+        else:
+            self.status_bar.update_status(f"Failed to clear data: {result['error']}", "error")
 
 
 class SuperSexySteamApp(QMainWindow):
@@ -1926,7 +2259,15 @@ class SuperSexySteamApp(QMainWindow):
             
         except Exception as e:
             logger.error(f"Failed to save configuration: {e}")
-            QMessageBox.critical(self, "Setup Error", f"Failed to save configuration: {e}")
+            error_dialog = ConfirmationOverlay(
+                title="Setup Error",
+                message=f"Failed to save configuration:\n\n{e}",
+                confirm_text="OK",
+                cancel_text="",
+                dialog_type="error",
+                parent=self
+            )
+            error_dialog.exec()
             
     def show_main_interface(self):
         """Show main application interface"""
