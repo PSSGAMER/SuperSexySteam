@@ -1,0 +1,1 @@
+ PyInstaller --onedir --windowed --name="SuperSexySteam" --icon="sss.ico" --add-data="sss.ico;." --add-data="steam.ico;." --add-data="refresh.ico;." --add-data="header.png;." --add-data="GreenLuma;GreenLuma" SuperSexySteam.py
