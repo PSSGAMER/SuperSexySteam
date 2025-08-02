@@ -103,10 +103,15 @@ class Theme:
             padding: 12px 24px;
             font-weight: bold;
             font-size: 14px;
+            outline: none;
         }}
         QPushButton:hover {{
             background: {hover_gradient};
             border: 1px solid rgba(255, 255, 255, 0.2);
+        }}
+        QPushButton:focus {{
+            background: {hover_gradient};
+            border: 2px solid {Theme.GOLD_PRIMARY};
         }}
         QPushButton:pressed {{
             background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 {Theme.GOLD_DARK}, stop:1 {Theme.GOLD_PRIMARY});
@@ -190,10 +195,15 @@ class AnimatedButton(QPushButton):
             padding: 12px 24px;
             font-weight: bold;
             font-size: 14px;
+            outline: none;
         }}
         QPushButton:hover {{
             background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 {Theme.GOLD_SECONDARY}, stop:1 {Theme.GOLD_PRIMARY});
             border: 2px solid rgba(255, 237, 78, 0.3);
+        }}
+        QPushButton:focus {{
+            background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 {Theme.GOLD_SECONDARY}, stop:1 {Theme.GOLD_PRIMARY});
+            border: 2px solid {Theme.GOLD_PRIMARY};
         }}
         QPushButton:pressed {{
             background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 {Theme.GOLD_DARK}, stop:1 {Theme.GOLD_PRIMARY});
@@ -387,10 +397,15 @@ class InstalledGameWidget(GradientFrame):
                 font-weight: bold;
                 font-size: 12px;
                 min-width: 100px;
+                outline: none;
             }}
             QPushButton:hover {{
                 background: #f44336;
                 border: 1px solid rgba(255, 255, 255, 0.2);
+            }}
+            QPushButton:focus {{
+                background: #f44336;
+                border: 2px solid {Theme.ACCENT_RED};
             }}
             QPushButton:pressed {{
                 background: #d32f2f;
@@ -425,7 +440,13 @@ class InstalledGamesDialog(QDialog):
         """Setup dialog window properties"""
         self.setWindowTitle("Installed Games")
         self.setModal(True)
-        self.resize(800, 700)
+        
+        # Match the parent window size if available, otherwise use main window default size
+        if self.parent():
+            parent_size = self.parent().size()
+            self.resize(parent_size)
+        else:
+            self.resize(800, 600)  # Match main window default size
         
         # Set window icon
         try:
@@ -484,10 +505,15 @@ class InstalledGamesDialog(QDialog):
                 padding: 10px 20px;
                 font-weight: bold;
                 font-size: 12px;
+                outline: none;
             }}
             QPushButton:hover {{
                 background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #00e6ff, stop:0.5 #00b3e6, stop:1 #0080b3);
                 border: 1px solid rgba(255, 255, 255, 0.2);
+            }}
+            QPushButton:focus {{
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #00e6ff, stop:0.5 #00b3e6, stop:1 #0080b3);
+                border: 2px solid {Theme.ACCENT_BLUE};
             }}
             QPushButton:pressed {{
                 background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #006699, stop:1 #0099cc);
@@ -550,10 +576,15 @@ class InstalledGamesDialog(QDialog):
                 padding: 12px 24px;
                 font-weight: bold;
                 font-size: 14px;
+                outline: none;
             }}
             QPushButton:hover {{
                 background: #f44336;
                 border: 1px solid rgba(255, 255, 255, 0.2);
+            }}
+            QPushButton:focus {{
+                background: #f44336;
+                border: 2px solid {Theme.ACCENT_RED};
             }}
             QPushButton:pressed {{
                 background: #d32f2f;
@@ -577,6 +608,9 @@ class InstalledGamesDialog(QDialog):
         loading_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.games_layout.addWidget(loading_label)
         
+        # Ensure the widget is properly updated
+        self.games_widget.update()
+        
     def show_empty_state(self):
         """Show empty state when no games are installed"""
         self.clear_games()
@@ -591,6 +625,9 @@ class InstalledGamesDialog(QDialog):
         """)
         empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.games_layout.addWidget(empty_label)
+        
+        # Ensure the widget is properly updated
+        self.games_widget.update()
         
     def show_error_state(self, error_message):
         """Show error state"""
@@ -607,12 +644,20 @@ class InstalledGamesDialog(QDialog):
         error_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.games_layout.addWidget(error_label)
         
+        # Ensure the widget is properly updated
+        self.games_widget.update()
+        
     def clear_games(self):
         """Clear all games from the layout"""
         while self.games_layout.count():
             child = self.games_layout.takeAt(0)
             if child.widget():
-                child.widget().deleteLater()
+                widget = child.widget()
+                widget.setParent(None)
+                widget.deleteLater()
+        
+        # Process events to ensure widgets are actually removed
+        QApplication.processEvents()
                 
     def load_games(self):
         """Load installed games"""
@@ -797,10 +842,15 @@ class GameResultWidget(GradientFrame):
                 font-weight: bold;
                 font-size: 12px;
                 min-width: 100px;
+                outline: none;
             }}
             QPushButton:hover {{
                 background: #4caf50;
                 border: 1px solid rgba(255, 255, 255, 0.2);
+            }}
+            QPushButton:focus {{
+                background: #4caf50;
+                border: 2px solid {Theme.ACCENT_GREEN};
             }}
             QPushButton:pressed {{
                 background: #388e3c;
@@ -960,10 +1010,15 @@ class ConfirmationOverlay(QDialog):
                         font-weight: bold;
                         font-size: 14px;
                         min-width: 100px;
+                        outline: none;
                     }}
                     QPushButton:hover {{
                         background: {Theme.TERTIARY_DARK};
                         border: 2px solid {Theme.TEXT_SECONDARY};
+                    }}
+                    QPushButton:focus {{
+                        background: {Theme.TERTIARY_DARK};
+                        border: 2px solid {Theme.TEXT_PRIMARY};
                     }}
                     QPushButton:pressed {{
                         background: {Theme.PRIMARY_DARK};
@@ -990,10 +1045,15 @@ class ConfirmationOverlay(QDialog):
                     font-weight: bold;
                     font-size: 14px;
                     min-width: 100px;
+                    outline: none;
                 }}
                 QPushButton:hover {{
                     background: {confirm_bg_color};
                     border: 2px solid rgba(255, 255, 255, 0.2);
+                }}
+                QPushButton:focus {{
+                    background: {confirm_bg_color};
+                    border: 2px solid rgba(255, 255, 255, 0.4);
                 }}
                 QPushButton:pressed {{
                     background: {confirm_bg_color};
@@ -1017,10 +1077,15 @@ class ConfirmationOverlay(QDialog):
                     font-weight: bold;
                     font-size: 14px;
                     min-width: 100px;
+                    outline: none;
                 }}
                 QPushButton:hover {{
                     background: #f44336;
                     border: 2px solid rgba(255, 255, 255, 0.2);
+                }}
+                QPushButton:focus {{
+                    background: #f44336;
+                    border: 2px solid rgba(255, 255, 255, 0.4);
                 }}
                 QPushButton:pressed {{
                     background: #d32f2f;
@@ -1149,7 +1214,13 @@ class SearchDialog(QDialog):
         """Setup dialog window properties"""
         self.setWindowTitle("Steam Game Search")
         self.setModal(True)
-        self.resize(700, 600)
+        
+        # Match the parent window size if available, otherwise use main window default size
+        if self.parent():
+            parent_size = self.parent().size()
+            self.resize(parent_size)
+        else:
+            self.resize(800, 600)  # Match main window default size
         
         # Set window icon
         try:
@@ -1310,9 +1381,14 @@ class SearchDialog(QDialog):
                 padding: 12px 24px;
                 font-weight: bold;
                 font-size: 14px;
+                outline: none;
             }}
             QPushButton:hover {{
                 background: #f44336;
+            }}
+            QPushButton:focus {{
+                background: #f44336;
+                border: 2px solid {Theme.ACCENT_RED};
             }}
             QPushButton:pressed {{
                 background: #d32f2f;
@@ -1972,9 +2048,14 @@ class MainInterface(QWidget):
                 font-weight: bold;
                 font-size: 18px;
                 min-height: 20px;
+                outline: none;
             }}
             QPushButton:hover {{
                 background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 {Theme.GOLD_SECONDARY}, stop:1 {Theme.GOLD_PRIMARY});
+            }}
+            QPushButton:focus {{
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 {Theme.GOLD_SECONDARY}, stop:1 {Theme.GOLD_PRIMARY});
+                border: 2px solid {Theme.GOLD_PRIMARY};
             }}
             QPushButton:pressed {{
                 background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 {Theme.GOLD_DARK}, stop:1 {Theme.GOLD_PRIMARY});
