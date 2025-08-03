@@ -92,6 +92,17 @@ class GameDatabaseManager:
                         FOREIGN KEY (app_id) REFERENCES appids (app_id) ON DELETE CASCADE
                     )
                 ''')
+
+                # Create User Data table to store user information like SteamID
+                logger.debug("Creating user_data table")
+                cursor.execute('''
+                    CREATE TABLE IF NOT EXISTS user_data (
+                        id INTEGER PRIMARY KEY CHECK (id = 1),
+                        steam_id TEXT,
+                        date_added TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                ''')
                 
                 # Create indices for better performance
                 logger.debug("Creating database indices")
@@ -717,6 +728,70 @@ class GameDatabaseManager:
         logger.debug("Database manager close() called")
         # SQLite connections are created per operation, so no persistent connection to close
         pass
+
+    # =============================================================================
+    # --- STEAM ID MANAGEMENT ---
+    # =============================================================================
+
+    def get_steam_id(self) -> Optional[str]:
+        """
+        Get the stored Steam ID from the database.
+        
+        Returns:
+            str or None: The Steam ID if stored, None otherwise
+        """
+        logger.debug("Getting Steam ID from database")
+        with self._lock:
+            try:
+                conn = self._get_connection()
+                cursor = conn.cursor()
+                
+                cursor.execute('SELECT steam_id FROM user_data WHERE id = 1')
+                result = cursor.fetchone()
+                conn.close()
+                
+                if result and result[0]:
+                    logger.debug(f"Found Steam ID: {result[0]}")
+                    return result[0]
+                else:
+                    logger.debug("No Steam ID found in database")
+                    return None
+                    
+            except sqlite3.Error as e:
+                logger.error(f"Failed to get Steam ID: {e}")
+                logger.debug("Get Steam ID exception:", exc_info=True)
+                return None
+
+    def set_steam_id(self, steam_id: str) -> bool:
+        """
+        Store the Steam ID in the database.
+        
+        Args:
+            steam_id (str): The Steam ID to store
+            
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        logger.info(f"Storing Steam ID: {steam_id}")
+        with self._lock:
+            try:
+                conn = self._get_connection()
+                cursor = conn.cursor()
+                
+                cursor.execute('''
+                    INSERT OR REPLACE INTO user_data (id, steam_id, last_updated)
+                    VALUES (1, ?, CURRENT_TIMESTAMP)
+                ''', (steam_id,))
+                
+                conn.commit()
+                conn.close()
+                logger.info(f"Successfully stored Steam ID: {steam_id}")
+                return True
+                
+            except sqlite3.Error as e:
+                logger.error(f"Failed to store Steam ID: {e}")
+                logger.debug("Set Steam ID exception:", exc_info=True)
+                return False
 
 
 # =============================================================================

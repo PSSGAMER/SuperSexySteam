@@ -203,6 +203,70 @@ def get_existing_depot_keys(config_path):
     return existing_keys
 
 
+def get_steam_id_from_config(config_path):
+    """
+    Reads the SteamID from Steam's config.vdf file.
+
+    Args:
+        config_path (str or Path): The full path to Steam's config.vdf file.
+
+    Returns:
+        str or None: The SteamID if found, otherwise None.
+    """
+    config_path = Path(config_path)
+    logger.debug(f"Reading SteamID from {config_path}")
+    
+    try:
+        with config_path.open('r', encoding='utf-8') as f:
+            config = vdf.load(f)
+
+        steam = _get_steam_node(config)
+        if not steam:
+            return None
+
+        # Look for LoginUsers which contains the most recent user info (most reliable)
+        login_users = steam.get('LoginUsers', {})
+        if login_users:
+            for user_key, user_data in login_users.items():
+                if isinstance(user_data, dict):
+                    # The key itself is often the SteamID in LoginUsers
+                    if user_key.isdigit() and len(user_key) == 17:  # SteamID64 format
+                        logger.info(f"Found SteamID from LoginUsers key: {user_key}")
+                        return user_key
+                    # Also check if there's a SteamID field in the data
+                    if 'SteamID' in user_data:
+                        steam_id = user_data['SteamID']
+                        logger.info(f"Found SteamID from LoginUsers data: {steam_id}")
+                        return steam_id
+
+        # Look for ConnectCache which contains connection history
+        connect_cache = steam.get('ConnectCache', {})
+        if connect_cache:
+            # Get the first account's SteamID (usually the most recently used account)
+            for account_key, account_data in connect_cache.items():
+                if isinstance(account_data, dict) and 'SteamID' in account_data:
+                    steam_id = account_data['SteamID']
+                    logger.info(f"Found SteamID from ConnectCache: {steam_id}")
+                    return steam_id
+
+        # Alternative: look in Accounts section (legacy)
+        accounts = steam.get('Accounts', {})
+        if accounts:
+            for account_name, account_data in accounts.items():
+                if isinstance(account_data, dict) and 'SteamID' in account_data:
+                    steam_id = account_data['SteamID']
+                    logger.info(f"Found SteamID from Accounts: {steam_id}")
+                    return steam_id
+
+        logger.warning("No SteamID found in config.vdf")
+        return None
+        
+    except Exception as e:
+        logger.error(f"Failed to read SteamID from config.vdf: {e}")
+        logger.debug("Get SteamID error details:", exc_info=True)
+        return None
+
+
 def add_depots_to_config_vdf(config_path, depots, create_backup=True):
     """
     Add depot decryption keys to Steam's config.vdf file.

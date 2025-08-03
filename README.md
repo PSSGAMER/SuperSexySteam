@@ -146,6 +146,11 @@ The installer will:
 #### Antivirus Issues
 - Add an exclusion for your antivirus to `%AppData%\Roaming\SuperSexySteam`
 
+#### Achievement Issues
+- You are not recommended to switch Steam accounts unless you do not care about the achievements
+- If you want to switch accounts and also have offline achievements, rememember to only use this app with one account as it stores the currently logged SteamID for achievements at first boot
+
+
 ## 🤝 Contributing
 
 > **Free to contribute for any features you want to add!**

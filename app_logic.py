@@ -63,6 +63,11 @@ class SuperSexySteamLogic:
         # Update missing game names for existing databases (migration)
         logger.debug("Performing database migration")
         self._perform_database_migration()
+        
+        # Check and store Steam ID on first boot
+        logger.debug("Checking Steam ID initialization")
+        self._initialize_steam_id()
+        
         logger.info("SuperSexySteam application logic initialized successfully")
     
     def _terminate_steam_on_startup(self) -> None:
@@ -97,6 +102,45 @@ class SuperSexySteamLogic:
         except Exception as e:
             logger.warning(f"Failed to update missing game names: {e}")
             logger.debug("Database migration exception:", exc_info=True)
+
+    def _initialize_steam_id(self) -> None:
+        """Initialize Steam ID by reading from config.vdf if not already stored."""
+        logger.debug("Initializing Steam ID")
+        try:
+            # Check if Steam ID is already stored
+            stored_steam_id = self.db.get_steam_id()
+            if stored_steam_id:
+                logger.info(f"Steam ID already stored: {stored_steam_id}")
+                return
+
+            # Try to read Steam ID from config.vdf
+            steam_path = self.config.get('Paths', 'steam_path', fallback='')
+            if not steam_path:
+                logger.warning("Steam path not configured, cannot read Steam ID")
+                return
+
+            config_vdf_path = Path(steam_path) / 'config' / 'config.vdf'
+            if not config_vdf_path.exists():
+                logger.warning(f"config.vdf not found at {config_vdf_path}")
+                return
+
+            # Import VDF parser function
+            from vdf_updater import get_steam_id_from_config
+            
+            steam_id = get_steam_id_from_config(config_vdf_path)
+            if steam_id:
+                # Store the Steam ID in database
+                success = self.db.set_steam_id(steam_id)
+                if success:
+                    logger.info(f"Successfully stored Steam ID: {steam_id}")
+                else:
+                    logger.error("Failed to store Steam ID in database")
+            else:
+                logger.warning("Could not find Steam ID in config.vdf")
+
+        except Exception as e:
+            logger.error(f"Failed to initialize Steam ID: {e}")
+            logger.debug("Steam ID initialization exception:", exc_info=True)
     
     # =============================================================================
     # --- DATABASE OPERATIONS ---
@@ -152,6 +196,26 @@ class SuperSexySteamLogic:
                 'games': [],
                 'count': 0
             }
+    
+    def get_steam_id(self) -> Optional[str]:
+        """
+        Get the stored Steam ID.
+        
+        Returns:
+            str or None: The stored Steam ID if available, None otherwise
+        """
+        logger.debug("Retrieving stored Steam ID")
+        try:
+            steam_id = self.db.get_steam_id()
+            if steam_id:
+                logger.debug(f"Retrieved Steam ID: {steam_id}")
+            else:
+                logger.debug("No Steam ID stored")
+            return steam_id
+        except Exception as e:
+            logger.error(f"Failed to get Steam ID: {e}")
+            logger.debug("Get Steam ID exception:", exc_info=True)
+            return None
     
     # =============================================================================
     # --- STEAM PROCESS MANAGEMENT ---
