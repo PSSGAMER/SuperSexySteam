@@ -10,6 +10,8 @@ import subprocess
 import configparser
 from pathlib import Path
 import logging
+import vdf
+import shutil
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -131,6 +133,98 @@ def terminate_steam():
     return result
 
 
+def set_steam_offline_mode(config: configparser.ConfigParser, offline_mode: bool = False):
+    """
+    Set the WantsOfflineMode setting in Steam's loginusers.vdf file.
+    
+    Args:
+        config (configparser.ConfigParser): The loaded application configuration.
+        offline_mode (bool): True to enable offline mode, False to disable it.
+        
+    Returns:
+        dict: Result dictionary with success status and details.
+    """
+    logger.info(f"Setting Steam offline mode to: {offline_mode}")
+    
+    result = {
+        'success': False,
+        'errors': []
+    }
+    
+    try:
+        # Get Steam path from config
+        steam_path = config.get('Paths', 'steam_path', fallback='')
+        logger.debug(f"Steam path from config: {steam_path}")
+        
+        if not steam_path:
+            error_msg = "Steam path not configured"
+            result['errors'].append(error_msg)
+            logger.error(error_msg)
+            return result
+        
+        # Construct path to loginusers.vdf
+        steam_dir = Path(steam_path)
+        loginusers_path = steam_dir / 'config' / 'loginusers.vdf'
+        logger.debug(f"loginusers.vdf path: {loginusers_path}")
+        
+        if not loginusers_path.exists():
+            error_msg = f"loginusers.vdf not found at: {loginusers_path}"
+            result['errors'].append(error_msg)
+            logger.error(error_msg)
+            return result
+        
+        # Read the loginusers.vdf file
+        logger.debug("Reading loginusers.vdf")
+        with loginusers_path.open('r', encoding='utf-8') as f:
+            loginusers_data = vdf.load(f)
+        
+        # Find and update WantsOfflineMode for all users
+        users_section = loginusers_data.get('users', {})
+        if not users_section:
+            error_msg = "No 'users' section found in loginusers.vdf"
+            result['errors'].append(error_msg)
+            logger.error(error_msg)
+            return result
+        
+        updated_users = 0
+        offline_mode_value = "1" if offline_mode else "0"
+        
+        for user_id, user_data in users_section.items():
+            if isinstance(user_data, dict):
+                original_value = user_data.get('WantsOfflineMode', 'not set')
+                user_data['WantsOfflineMode'] = offline_mode_value
+                updated_users += 1
+                logger.debug(f"Updated user {user_id}: WantsOfflineMode {original_value} -> {offline_mode_value}")
+        
+        if updated_users == 0:
+            error_msg = "No user accounts found to update"
+            result['errors'].append(error_msg)
+            logger.error(error_msg)
+            return result
+        
+        # Create backup before modifying
+        backup_path = loginusers_path.with_suffix('.vdf.bak')
+        logger.debug(f"Creating backup: {backup_path}")
+        shutil.copy2(loginusers_path, backup_path)
+        
+        # Write the updated loginusers.vdf back to disk
+        logger.debug("Writing updated loginusers.vdf")
+        with loginusers_path.open('w', encoding='utf-8') as f:
+            vdf.dump(loginusers_data, f, pretty=True)
+        
+        result['success'] = True
+        result['updated_users'] = updated_users
+        logger.info(f"Successfully updated WantsOfflineMode to {offline_mode_value} for {updated_users} user(s)")
+        
+    except Exception as e:
+        error_msg = f"Failed to set Steam offline mode: {e}"
+        result['errors'].append(error_msg)
+        logger.error(error_msg)
+        logger.debug("Set offline mode error details:", exc_info=True)
+    
+    return result
+
+
 def run_steam_with_dll_injector(config: configparser.ConfigParser):
     """
     Run Steam using the DLLInjector.exe from GreenLuma.
@@ -149,6 +243,12 @@ def run_steam_with_dll_injector(config: configparser.ConfigParser):
     }
     
     try:
+        # Set Steam to online mode (disable offline mode) before launching
+        offline_result = set_steam_offline_mode(config, offline_mode=False)
+        if not offline_result['success']:
+            logger.warning(f"Failed to disable offline mode: {offline_result['errors']}")
+            # Continue anyway, as this is not critical for Steam launching
+        
         # Get GreenLuma path from config
         greenluma_path = config.get('Paths', 'greenluma_path', fallback='')
         logger.debug(f"GreenLuma path from config: {greenluma_path}")

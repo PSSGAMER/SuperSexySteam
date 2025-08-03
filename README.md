@@ -144,6 +144,10 @@ The installer will:
 - Ensure Steam.exe is in the specified directory
 - Check for Steam process conflicts
 
+#### Steam Client Stuck at Loading
+- Result of using offline mode with our app
+- To fix it, simply run steam from inside the main app once
+
 #### Antivirus Issues
 - Add an exclusion for your antivirus to `%AppData%\Roaming\SuperSexySteam`
 
