@@ -22,7 +22,6 @@
 - **Game Management**: Install, uninstall, and manage Steam games with ease
 - **Database Tracking**: SQLite database for tracking installed games, depots, and manifests
 - **Steam Integration**: Direct Steam client management and process control
-- **Achievement Support**: Get Achievement Notification in game, and in Steam client (offline mode only)
 - **GreenLuma Support**: Full integration with GreenLuma 2025 for DLL injection
 
 ### 🛠️ Planned Features

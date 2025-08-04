@@ -16,8 +16,6 @@ from acfgen import generate_acf_for_appid, remove_acf_for_appid
 from steam_game_search import get_game_name_by_appid
 # Import the centralized uninstaller
 from system_cleaner import uninstall_specific_appid
-# Import achievement functionality
-from stats_schema_gen import generate_achievement_files
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -90,8 +88,7 @@ class GameInstaller:
                 'manifests_tracked': 0,
                 'greenluma_updated': False,
                 'config_vdf_updated': False,
-                'acf_generated': False,
-                'achievement_files_generated': False
+                'acf_generated': False
             }
         }
         
@@ -229,39 +226,6 @@ class GameInstaller:
                     logger.warning(warning_msg)
                     logger.debug("ACF generation exception:", exc_info=True)
                     result['warnings'].append(warning_msg)
-            
-            # Step 9: Generate achievement files (UserGameStatsSchema and UserGameStats)
-            if self.is_steam_path_valid:
-                try:
-                    # Get the user's Steam ID from the database
-                    steam_id = self.db.get_steam_id()
-                    if steam_id:
-                        logger.debug(f"Generating achievement files for AppID {app_id} with Steam ID {steam_id}")
-                        achievement_success = generate_achievement_files(int(app_id), int(steam_id), str(self.steam_path))
-                        if achievement_success:
-                            result['stats']['achievement_files_generated'] = True
-                            logger.info(f"Achievement files generated successfully for AppID {app_id}")
-                        else:
-                            warning_msg = "Failed to generate achievement files (game may not have achievements)"
-                            logger.warning(warning_msg)
-                            result['warnings'].append(warning_msg)
-                            result['stats']['achievement_files_generated'] = False
-                    else:
-                        warning_msg = "No Steam ID configured in database, skipping achievement file generation"
-                        logger.warning(warning_msg)
-                        result['warnings'].append(warning_msg)
-                        result['stats']['achievement_files_generated'] = False
-                except Exception as e:
-                    warning_msg = f"Achievement file generation failed: {e}"
-                    logger.warning(warning_msg)
-                    logger.debug("Achievement file generation exception:", exc_info=True)
-                    result['warnings'].append(warning_msg)
-                    result['stats']['achievement_files_generated'] = False
-            else:
-                warning_msg = "Invalid Steam path, skipping achievement file generation"
-                logger.warning(warning_msg)
-                result['warnings'].append(warning_msg)
-                result['stats']['achievement_files_generated'] = False
             
             result['success'] = True
             logger.info(f"Installation completed successfully for AppID {app_id}")
