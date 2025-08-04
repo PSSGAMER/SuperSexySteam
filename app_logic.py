@@ -16,7 +16,9 @@ import configparser
 import logging
 from pathlib import Path
 import shutil
+import tempfile
 import time
+import uuid
 from typing import Dict, List, Any, Optional, Tuple
 
 # Configure logging
@@ -134,6 +136,116 @@ class SuperSexySteamLogic:
             logger.error(f"Failed to initialize Steam ID: {e}")
             logger.debug("Steam ID initialization exception:", exc_info=True)
     
+    def _copy_files_to_temp_location(self, file_paths: List[str]) -> Dict[str, Any]:
+        """
+        Copy dropped files to a secure temporary location before any processing.
+        This is the ABSOLUTE FIRST step in any drag and drop operation.
+        
+        Uses Windows temp directory with UUID-based folder names to prevent conflicts
+        and automatic cleanup on process exit.
+        
+        Args:
+            file_paths: List of original file paths that were dropped
+            
+        Returns:
+            Dict with success status, temp directory path, and mapped file paths
+        """
+        logger.info(f"Copying {len(file_paths)} dropped files to temporary location")
+        logger.debug(f"Original file paths: {file_paths}")
+        
+        try:
+            # Create a unique temporary directory using UUID to prevent conflicts
+            # This ensures multiple simultaneous installations don't interfere
+            temp_session_id = str(uuid.uuid4())[:8]  # Use first 8 chars of UUID
+            timestamp = str(int(time.time()))
+            temp_dir_name = f"SuperSexySteam_{temp_session_id}_{timestamp}"
+            
+            # Use Windows temp directory (typically C:\Users\{user}\AppData\Local\Temp)
+            temp_base = Path(tempfile.gettempdir())
+            temp_dir = temp_base / temp_dir_name
+            
+            logger.debug(f"Creating temporary directory: {temp_dir}")
+            temp_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Copy each file to the temporary directory
+            copied_files = []
+            errors = []
+            
+            for original_path_str in file_paths:
+                try:
+                    original_path = Path(original_path_str)
+                    
+                    # Verify the original file exists before copying
+                    if not original_path.exists():
+                        error_msg = f"Original file not found: {original_path}"
+                        logger.error(error_msg)
+                        errors.append(error_msg)
+                        continue
+                    
+                    # Copy to temp directory with same filename
+                    temp_file_path = temp_dir / original_path.name
+                    logger.debug(f"Copying {original_path.name} to temporary location")
+                    
+                    # Use copy2 to preserve metadata (timestamps, permissions)
+                    shutil.copy2(original_path, temp_file_path)
+                    copied_files.append(str(temp_file_path))
+                    logger.debug(f"Successfully copied {original_path.name} to temp")
+                    
+                except Exception as e:
+                    error_msg = f"Failed to copy file '{original_path_str}': {e}"
+                    logger.error(error_msg)
+                    errors.append(error_msg)
+            
+            # If any errors occurred, clean up and return failure
+            if errors:
+                logger.error(f"File copy errors occurred, cleaning up temporary directory: {temp_dir}")
+                try:
+                    shutil.rmtree(temp_dir, ignore_errors=True)
+                except Exception as cleanup_error:
+                    logger.warning(f"Failed to cleanup temp directory after errors: {cleanup_error}")
+                
+                return {
+                    'success': False,
+                    'errors': errors,
+                    'temp_directory': None,
+                    'copied_files': []
+                }
+            
+            # Success - all files copied
+            logger.info(f"Successfully copied {len(copied_files)} files to temporary location: {temp_dir}")
+            
+            # Register cleanup function to automatically remove temp directory on exit
+            # This ensures cleanup even if the application crashes
+            import atexit
+            def cleanup_temp():
+                try:
+                    if temp_dir.exists():
+                        logger.debug(f"Cleaning up temporary directory on exit: {temp_dir}")
+                        shutil.rmtree(temp_dir, ignore_errors=True)
+                except Exception as e:
+                    logger.warning(f"Failed to cleanup temp directory on exit: {e}")
+            
+            atexit.register(cleanup_temp)
+            
+            return {
+                'success': True,
+                'temp_directory': str(temp_dir),
+                'copied_files': copied_files,
+                'original_files': file_paths,
+                'files_copied': len(copied_files)
+            }
+            
+        except Exception as e:
+            error_msg = f"Unexpected error during temporary file copy: {e}"
+            logger.error(error_msg)
+            logger.debug("Temporary file copy exception:", exc_info=True)
+            return {
+                'success': False,
+                'errors': [error_msg],
+                'temp_directory': None,
+                'copied_files': []
+            }
+
     # =============================================================================
     # --- DATABASE OPERATIONS ---
     # =============================================================================
@@ -510,9 +622,26 @@ class SuperSexySteamLogic:
         """
         logger.info(f"Starting game installation process for {len(file_paths)} files")
         
-        # Step 1: Validate files
-        logger.debug("Step 1: Validating dropped files")
-        validation_result = self.validate_dropped_files(file_paths)
+        # Step 0: ABSOLUTE FIRST - Copy files to temporary location
+        # This prevents issues with files being deleted during processing
+        logger.debug("Step 0: Copying dropped files to temporary location (FIRST PRIORITY)")
+        temp_copy_result = self._copy_files_to_temp_location(file_paths)
+        if not temp_copy_result['success']:
+            logger.error(f"Failed to copy files to temporary location: {temp_copy_result['errors']}")
+            return {
+                'success': False,
+                'error': f"Failed to secure files: {'; '.join(temp_copy_result['errors'])}",
+                'stage': 'temp_copy'
+            }
+        
+        # Use the temporary file paths for all subsequent operations
+        temp_file_paths = temp_copy_result['copied_files']
+        temp_directory = temp_copy_result['temp_directory']
+        logger.info(f"Files secured in temporary location: {temp_directory}")
+        
+        # Step 1: Validate files (using temp copies)
+        logger.debug("Step 1: Validating dropped files from temporary location")
+        validation_result = self.validate_dropped_files(temp_file_paths)
         if not validation_result['success']:
             logger.error(f"File validation failed: {validation_result['error']}")
             return {
@@ -579,6 +708,13 @@ class SuperSexySteamLogic:
                 if 'warnings' in install_result:
                     result['warnings'].extend(install_result['warnings'])
                 
+                # Clean up temporary directory after successful installation
+                try:
+                    logger.debug(f"Cleaning up temporary directory after successful installation: {temp_directory}")
+                    shutil.rmtree(temp_directory, ignore_errors=True)
+                except Exception as cleanup_error:
+                    logger.warning(f"Failed to cleanup temporary directory: {cleanup_error}")
+                
                 return result
             else:
                 # Installation failed, clean up
@@ -590,6 +726,13 @@ class SuperSexySteamLogic:
                 if Path(destination_directory).exists():
                     logger.debug(f"Cleaning up destination directory after failed installation: {destination_directory}")
                     shutil.rmtree(destination_directory, ignore_errors=True)
+                
+                # Clean up temporary directory after failed installation
+                try:
+                    logger.debug(f"Cleaning up temporary directory after failed installation: {temp_directory}")
+                    shutil.rmtree(temp_directory, ignore_errors=True)
+                except Exception as cleanup_error:
+                    logger.warning(f"Failed to cleanup temporary directory: {cleanup_error}")
                 
                 return result
             
@@ -603,6 +746,14 @@ class SuperSexySteamLogic:
             if 'destination_directory' in locals() and Path(destination_directory).exists():
                 logger.debug(f"Cleaning up destination directory after exception: {destination_directory}")
                 shutil.rmtree(destination_directory, ignore_errors=True)
+            
+            # Clean up temporary directory after exception
+            try:
+                if 'temp_directory' in locals():
+                    logger.debug(f"Cleaning up temporary directory after exception: {temp_directory}")
+                    shutil.rmtree(temp_directory, ignore_errors=True)
+            except Exception as cleanup_error:
+                logger.warning(f"Failed to cleanup temporary directory after exception: {cleanup_error}")
             
             return result
     
@@ -881,4 +1032,52 @@ class SuperSexySteamLogic:
                 'success': False,
                 'error': str(e),
                 'app_ready': False
+            }
+    
+    def cleanup_temp_directories(self) -> Dict[str, Any]:
+        """
+        Manually clean up any leftover SuperSexySteam temporary directories.
+        This can be called as a maintenance function.
+        
+        Returns:
+            Dict with cleanup results
+        """
+        logger.info("Performing manual cleanup of temporary directories")
+        
+        try:
+            temp_base = Path(tempfile.gettempdir())
+            
+            # Find all SuperSexySteam temp directories
+            temp_dirs = list(temp_base.glob("SuperSexySteam_*"))
+            logger.debug(f"Found {len(temp_dirs)} potential SuperSexySteam temp directories")
+            
+            removed_count = 0
+            errors = []
+            
+            for temp_dir in temp_dirs:
+                try:
+                    if temp_dir.is_dir():
+                        logger.debug(f"Removing temp directory: {temp_dir}")
+                        shutil.rmtree(temp_dir, ignore_errors=True)
+                        removed_count += 1
+                except Exception as e:
+                    error_msg = f"Failed to remove {temp_dir}: {e}"
+                    logger.warning(error_msg)
+                    errors.append(error_msg)
+            
+            logger.info(f"Cleanup complete: {removed_count} directories removed, {len(errors)} errors")
+            
+            return {
+                'success': True,
+                'directories_removed': removed_count,
+                'errors': errors
+            }
+            
+        except Exception as e:
+            error_msg = f"Failed to cleanup temp directories: {e}"
+            logger.error(error_msg)
+            return {
+                'success': False,
+                'directories_removed': 0,
+                'errors': [error_msg]
             }
