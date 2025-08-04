@@ -13,10 +13,41 @@ from pathlib import Path
 from typing import Dict, List, Any, Optional
 
 # Configure logging for the entire application
+class ColoredFormatter(logging.Formatter):
+    """Custom formatter that adds colors to log levels"""
+    
+    # ANSI color codes
+    COLORS = {
+        'DEBUG': '\033[36m',      # Cyan
+        'INFO': '\033[32m',       # Green
+        'WARNING': '\033[91m',    # Red
+    }
+    
+    def format(self, record):
+        # Get the original formatted message
+        log_message = super().format(record)
+        
+        # Add color for logs
+        level_name = record.levelname
+        if level_name in self.COLORS:
+            color = self.COLORS[level_name]
+            reset = self.COLORS['RESET']
+            # Color the entire log message
+            log_message = f"{color}{log_message}{reset}"
+        
+        return log_message
+
+# Create colored formatter
+colored_formatter = ColoredFormatter('[%(name)s] [%(levelname)s] %(message)s')
+
+# Create stream handler with colored formatter
+stream_handler = logging.StreamHandler()
+stream_handler.setFormatter(colored_formatter)
+
+# Configure root logger
 logging.basicConfig(
     level=logging.DEBUG,
-    format='[%(name)s] [%(levelname)s] %(message)s',
-    handlers=[logging.StreamHandler()]
+    handlers=[stream_handler]
 )
 
 # Get logger for this module
