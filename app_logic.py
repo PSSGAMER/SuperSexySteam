@@ -125,9 +125,7 @@ class SuperSexySteamLogic:
             if steam_id:
                 # Store the Steam ID in database
                 success = self.db.set_steam_id(steam_id)
-                if success:
-                    logger.info(f"Successfully stored Steam ID: {steam_id}")
-                else:
+                if not success:
                     logger.error("Failed to store Steam ID in database")
             else:
                 logger.warning("Could not find Steam ID in config.vdf")
