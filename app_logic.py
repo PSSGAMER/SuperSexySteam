@@ -21,12 +21,6 @@ from typing import Dict, List, Any, Optional, Tuple
 
 # Configure logging
 logger = logging.getLogger(__name__)
-if not logger.handlers:
-    handler = logging.StreamHandler()
-    formatter = logging.Formatter('[%(name)s] [%(levelname)s] %(message)s')
-    handler.setFormatter(formatter)
-    logger.addHandler(handler)
-    logger.setLevel(logging.DEBUG)
 # Import our custom modules
 from greenluma_manager import configure_greenluma_injector
 from database_manager import get_database_manager

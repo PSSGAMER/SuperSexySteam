@@ -12,6 +12,16 @@ import configparser
 from pathlib import Path
 from typing import Dict, List, Any, Optional
 
+# Configure logging for the entire application
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='[%(name)s] [%(levelname)s] %(message)s',
+    handlers=[logging.StreamHandler()]
+)
+
+# Get logger for this module
+logger = logging.getLogger(__name__)
+
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QLineEdit, QPushButton, QFrame, QScrollArea, QTextEdit,
@@ -30,15 +40,6 @@ from PySide6.QtGui import (
 
 # Import our application logic
 from app_logic import SuperSexySteamLogic
-
-# Configure logging
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
-if not logger.handlers:
-    handler = logging.StreamHandler()
-    formatter = logging.Formatter('[%(name)s] [%(levelname)s] %(message)s')
-    handler.setFormatter(formatter)
-    logger.addHandler(handler)
 
 
 class Theme:
@@ -1756,6 +1757,56 @@ class FirstTimeSetupWidget(QStackedWidget):
         completion_page = self.create_completion_page()
         self.addWidget(completion_page)
         
+    def create_header_widget(self):
+        """Create header widget with image or fallback text (same as main interface)"""
+        try:
+            # Try to load header.png
+            header_path = Path(__file__).parent / "header.png"
+            if header_path.exists():
+                # Load and resize the header image
+                pixmap = QPixmap(str(header_path))
+                
+                # Scale the image to a reasonable size while maintaining aspect ratio
+                max_width = 500
+                if pixmap.width() > max_width:
+                    pixmap = pixmap.scaledToWidth(max_width, Qt.TransformationMode.SmoothTransformation)
+                
+                header_label = QLabel()
+                header_label.setPixmap(pixmap)
+                header_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                header_label.setStyleSheet("background: transparent;")
+                return header_label
+            else:
+                # Fallback to text header
+                header_label = QLabel("SuperSexySteam")
+                header_label.setStyleSheet(f"""
+                    QLabel {{
+                        color: {Theme.GOLD_PRIMARY};
+                        font-size: 48px;
+                        font-weight: bold;
+                        background: transparent;
+                        padding: 10px;
+                    }}
+                """)
+                header_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                return header_label
+                
+        except Exception as e:
+            logger.warning(f"Failed to load header image in setup: {e}")
+            # Fallback to text header
+            header_label = QLabel("SuperSexySteam")
+            header_label.setStyleSheet(f"""
+                QLabel {{
+                    color: {Theme.GOLD_PRIMARY};
+                    font-size: 48px;
+                    font-weight: bold;
+                    background: transparent;
+                    padding: 10px;
+                }}
+            """)
+            header_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            return header_label
+        
     def create_welcome_page(self):
         """Create welcome page"""
         page = QWidget()
@@ -1763,17 +1814,9 @@ class FirstTimeSetupWidget(QStackedWidget):
         layout.setContentsMargins(60, 60, 60, 60)
         layout.setSpacing(30)
         
-        # Logo/Title
-        title = QLabel("SuperSexySteam")
-        title.setStyleSheet(f"""
-            QLabel {{
-                color: {Theme.GOLD_PRIMARY};
-                font-size: 48px;
-                font-weight: bold;
-            }}
-        """)
-        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(title)
+        # Header with logo/banner (same as main interface)
+        header_widget = self.create_header_widget()
+        layout.addWidget(header_widget)
         
         # Subtitle
         subtitle = QLabel("Welcome to the most advanced Steam depot manager")

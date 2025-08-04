@@ -15,12 +15,6 @@ from greenluma_manager import remove_appid_from_greenluma, clear_greenluma_appli
 
 # Configure logging
 logger = logging.getLogger(__name__)
-if not logger.handlers:
-    handler = logging.StreamHandler()
-    formatter = logging.Formatter('[%(name)s] [%(levelname)s] %(message)s')
-    handler.setFormatter(formatter)
-    logger.addHandler(handler)
-    logger.setLevel(logging.DEBUG)
 
 def _validate_paths(config, result: Dict[str, any]) -> tuple[Path, Path, Path]:
     """

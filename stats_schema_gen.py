@@ -14,8 +14,8 @@ from steam.enums.common import EResult
 from steam.enums.emsg import EMsg
 from steam.core.msg import MsgProto
 
-# Configure logging for clear output
-logging.basicConfig(format='[%(levelname)s] %(message)s', level=logging.INFO)
+# Configure logging
+logger = logging.getLogger(__name__)
 
 # A list of Steam IDs with public profiles that own a large number of games.
 # This increases the chances of finding a valid schema for any given AppID.
