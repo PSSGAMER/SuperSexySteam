@@ -23,7 +23,7 @@
 - **Database Tracking**: SQLite database for tracking installed games, depots, and manifests
 - **Steam Integration**: Direct Steam client management and process control
 - **GreenLuma Support**: Full integration with GreenLuma 2025 for DLL injection
-
+- **Achievement Notifications**: Notifies when you gain any achievement and you can also see all the achievements if you set steam to offline mode
 ### 🛠️ Planned Features
 - **Auto Updater**: Automatic application updates
 - **Denuvo Token Integration**: Advanced DRM handling

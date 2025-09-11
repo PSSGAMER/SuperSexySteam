@@ -50,18 +50,10 @@ class GameDatabaseManager:
                         game_name TEXT,
                         date_added TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                         last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        is_installed BOOLEAN DEFAULT 1
+                        is_installed BOOLEAN DEFAULT 1,
+                        achievements_generated BOOLEAN DEFAULT 0
                     )
                 ''')
-                
-                # Check if game_name column exists, if not add it (for migration)
-                cursor.execute("PRAGMA table_info(appids)")
-                columns = [column[1] for column in cursor.fetchall()]
-                if 'game_name' not in columns:
-                    logger.info("Adding game_name column to existing database (migration)")
-                    cursor.execute('ALTER TABLE appids ADD COLUMN game_name TEXT')
-                else:
-                    logger.debug("game_name column already exists")
                 
                 # Create Depots table
                 logger.debug("Creating depots table")
@@ -447,6 +439,66 @@ class GameDatabaseManager:
                 logger.error(f"Failed to get manifest files for AppID {app_id}: {e}")
                 logger.debug("Get manifests for AppID exception:", exc_info=True)
                 return []
+    
+    def get_appids_without_achievements(self) -> List[str]:
+        """
+        Get all AppIDs that haven't had their achievement schemas generated yet.
+        
+        Returns:
+            List[str]: List of AppIDs with achievements_generated = 0
+        """
+        logger.debug("Retrieving AppIDs without achievement schemas")
+        with self._lock:
+            try:
+                conn = self._get_connection()
+                cursor = conn.cursor()
+                
+                cursor.execute('SELECT app_id FROM appids WHERE achievements_generated = 0 ORDER BY app_id')
+                results = cursor.fetchall()
+                
+                conn.close()
+                appids = [row[0] for row in results]
+                logger.info(f"Retrieved {len(appids)} AppIDs without achievement schemas")
+                return appids
+                
+            except sqlite3.Error as e:
+                logger.error(f"Failed to get AppIDs without achievements: {e}")
+                logger.debug("Get AppIDs without achievements exception:", exc_info=True)
+                return []
+    
+    def mark_achievements_generated(self, app_id: str) -> bool:
+        """
+        Mark an AppID as having its achievement schema generated.
+        
+        Args:
+            app_id (str): The AppID to mark as processed
+            
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        logger.debug(f"Marking achievements as generated for AppID: {app_id}")
+        with self._lock:
+            try:
+                conn = self._get_connection()
+                cursor = conn.cursor()
+                
+                cursor.execute('UPDATE appids SET achievements_generated = 1 WHERE app_id = ?', (app_id,))
+                
+                if cursor.rowcount > 0:
+                    conn.commit()
+                    logger.info(f"Successfully marked achievements as generated for AppID: {app_id}")
+                    result = True
+                else:
+                    logger.warning(f"No AppID found to update: {app_id}")
+                    result = False
+                
+                conn.close()
+                return result
+                
+            except sqlite3.Error as e:
+                logger.error(f"Failed to mark achievements as generated for AppID {app_id}: {e}")
+                logger.debug("Mark achievements generated exception:", exc_info=True)
+                return False
 
     def get_all_installed_appids(self) -> List[str]:
         """

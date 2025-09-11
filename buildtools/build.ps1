@@ -64,7 +64,7 @@ if (Test-Path "build") {
 
 # Step 6: Run PyInstaller
 Write-Host "`nStep 6: Running PyInstaller..." -ForegroundColor Cyan
-$PyInstallerCommand = 'PyInstaller --onedir --windowed --name="SuperSexySteam" --icon="sss.ico" --add-data="sss.ico;." --add-data="steam.ico;." --add-data="refresh.ico;." --add-data="header.png;." --add-data="GreenLuma;GreenLuma" SuperSexySteam.py'
+$PyInstallerCommand = 'PyInstaller --onedir --windowed --name="SuperSexySteam" --icon="sss.ico" --add-data="sss.ico;." --add-data="steam.ico;." --add-data="refresh.ico;." --add-data="header.png;." --add-data="GreenLuma;GreenLuma" --add-data="UserGameStats_steamid_appid.bin" SuperSexySteam.py'
 Write-Host "Command: $PyInstallerCommand" -ForegroundColor Gray
 
 Invoke-Expression $PyInstallerCommand

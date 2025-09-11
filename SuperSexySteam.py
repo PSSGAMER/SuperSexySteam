@@ -8,6 +8,7 @@ import sys
 import os
 import json
 import logging
+import subprocess
 import configparser
 from pathlib import Path
 from typing import Dict, List, Any, Optional
@@ -2205,6 +2206,25 @@ class MainInterface(QWidget):
         
         layout.addLayout(button_layout)
         
+        # Achievement button in a new row
+        achievement_layout = QHBoxLayout()
+        achievement_layout.setSpacing(15)
+        
+        # Add stretch to center the button
+        achievement_layout.addStretch()
+        
+        self.achievements_button = AnimatedButton("Generate Achievements")
+        self.achievements_button.setStyleSheet(Theme.get_button_style(
+            f"qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 {Theme.ACCENT_PURPLE}, stop:1 #6a1b9a)", 
+            Theme.TEXT_PRIMARY
+        ))
+        achievement_layout.addWidget(self.achievements_button)
+        
+        # Add stretch to center the button
+        achievement_layout.addStretch()
+        
+        layout.addLayout(achievement_layout)
+        
     def create_header_widget(self):
         """Create header widget with image or fallback text"""
         try:
@@ -2263,6 +2283,7 @@ class MainInterface(QWidget):
         self.installed_button.clicked.connect(self.open_installed_games_dialog)
         self.uninstall_button.clicked.connect(self.uninstall_game)
         self.clear_button.clicked.connect(self.clear_data)
+        self.achievements_button.clicked.connect(self.run_achievements)
         
     def handle_files_dropped(self, files):
         """Handle dropped files"""
@@ -2349,6 +2370,41 @@ class MainInterface(QWidget):
             self.status_bar.update_status(f"Data cleared! {result['summary']}", "success")
         else:
             self.status_bar.update_status(f"Failed to clear data: {result['error']}", "error")
+    
+    def run_achievements(self):
+        """Run the achievements.py script"""
+        try:
+            self.status_bar.update_status("Running achievements script...", "loading")
+            self.achievements_button.setEnabled(False)
+            self.achievements_button.setText("🔄 Running...")
+            
+            # Get the current directory where the script is located
+            script_dir = Path(__file__).parent
+            achievements_script = script_dir / "achievements.py"
+            
+            if not achievements_script.exists():
+                self.status_bar.update_status("achievements.py script not found!", "error")
+                self.achievements_button.setEnabled(True)
+                self.achievements_button.setText("🏆 Generate Achievements")
+                return
+            
+            # Run the achievements script
+            process = subprocess.Popen(
+                [sys.executable, str(achievements_script)],
+                cwd=str(script_dir),
+                creationflags=subprocess.CREATE_NEW_CONSOLE if os.name == 'nt' else 0
+            )
+            
+            # Don't wait for the process to complete - let it run in its own console
+            self.status_bar.update_status("Achievements script launched in new console window", "success")
+            
+        except Exception as e:
+            logger.error(f"Failed to run achievements script: {e}")
+            self.status_bar.update_status(f"Failed to run achievements script: {str(e)}", "error")
+        finally:
+            # Re-enable the button
+            self.achievements_button.setEnabled(True)
+            self.achievements_button.setText("🏆 Generate Achievements")
 
 
 class SuperSexySteamApp(QMainWindow):
