@@ -22,7 +22,6 @@
 #   python achievements.py --show-stored-user      # Show currently stored username
 
 import sys
-import getpass
 import logging
 import keyring
 import shutil
@@ -346,7 +345,7 @@ def authenticate_steam() -> SteamClient:
         else:
             # User chose not to use stored credentials
             username = input("Enter Steam username: ").strip()
-            password = getpass.getpass("Enter Steam password: ")
+            password = input("Enter Steam password: ")
             
             # Ask if they want to store the new credentials
             if username and password:
@@ -360,7 +359,7 @@ def authenticate_steam() -> SteamClient:
         # No stored credentials, ask for them
         print("No stored credentials found")
         username = input("Enter Steam username: ").strip()
-        password = getpass.getpass("Enter Steam password: ")
+        password = input("Enter Steam password: ")
         
         # Ask if they want to store the credentials
         if username and password:

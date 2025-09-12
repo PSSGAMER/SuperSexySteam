@@ -2378,26 +2378,122 @@ class MainInterface(QWidget):
             self.achievements_button.setEnabled(False)
             self.achievements_button.setText("🔄 Running...")
             
-            # Get the current directory where the script is located
-            script_dir = Path(__file__).parent
-            achievements_script = script_dir / "achievements.py"
-            
-            if not achievements_script.exists():
-                self.status_bar.update_status("achievements.py script not found!", "error")
-                self.achievements_button.setEnabled(True)
-                self.achievements_button.setText("Generate Achievements")
-                return
-            
-            # Run the achievements script
-            process = subprocess.Popen(
-                [sys.executable, str(achievements_script)],
-                cwd=str(script_dir),
-                creationflags=subprocess.CREATE_NEW_CONSOLE if os.name == 'nt' else 0
-            )
-            
-            # Don't wait for the process to complete - let it run in its own console
-            self.status_bar.update_status("Achievements script launched in new console window", "success")
-            
+            if getattr(sys, 'frozen', False):
+                # Running in a PyInstaller bundle - run in a separate thread with console
+                import threading
+                import achievements
+                
+                def run_achievements_with_console():
+                    try:
+                        # Try to allocate a console window for output
+                        try:
+                            import ctypes
+                            ctypes.windll.kernel32.AllocConsole()
+                            
+                            # Properly redirect all streams to the new console
+                            import sys
+                            import os
+                            
+                            # Open console handles
+                            stdin_handle = ctypes.windll.kernel32.GetStdHandle(-10)  # STD_INPUT_HANDLE
+                            stdout_handle = ctypes.windll.kernel32.GetStdHandle(-11)  # STD_OUTPUT_HANDLE
+                            stderr_handle = ctypes.windll.kernel32.GetStdHandle(-12)  # STD_ERROR_HANDLE
+                            
+                            # Redirect streams
+                            sys.stdin = open('CONIN$', 'r')
+                            sys.stdout = open('CONOUT$', 'w')
+                            sys.stderr = open('CONOUT$', 'w')
+                            
+                            # Also redirect os level file descriptors
+                            os.dup2(sys.stdin.fileno(), 0)
+                            os.dup2(sys.stdout.fileno(), 1)
+                            os.dup2(sys.stderr.fileno(), 2)
+                            
+                            # Reconfigure logging to use the new console
+                            import logging
+                            
+                            # Remove all existing handlers
+                            root_logger = logging.getLogger()
+                            for handler in root_logger.handlers[:]:
+                                root_logger.removeHandler(handler)
+                            
+                            # Create a new console handler
+                            console_handler = logging.StreamHandler(sys.stdout)
+                            formatter = logging.Formatter('%(levelname)s: %(message)s')
+                            console_handler.setFormatter(formatter)
+                            console_handler.setLevel(logging.INFO)
+                            
+                            # Add the console handler
+                            root_logger.addHandler(console_handler)
+                            root_logger.setLevel(logging.INFO)
+                            
+                        except Exception as console_err:
+                            print(f"Warning: Could not allocate console: {console_err}")
+                        
+                        print("SuperSexySteam - Achievements Generator")
+                        print("=" * 50)
+                        achievements.main()
+                        
+                    except Exception as e:
+                        print(f"\nError running achievements: {e}")
+                        import traceback
+                        traceback.print_exc()
+                    finally:
+                        print("\nAchievements script completed.")
+                        
+                        # Better input handling that won't block forever or crash main app
+                        # Only start auto-close AFTER the script is completely done
+                        try:
+                            import msvcrt
+                            print("Press any key to close this window...")
+                            msvcrt.getch()  # Wait for any key press
+                        except:
+                            try:
+                                # Fallback to simple input - no auto-close timer to avoid interrupting
+                                print("Press Enter to close this window...")
+                                input()
+                                    
+                            except:
+                                # Final fallback - wait longer since script is done
+                                import time
+                                print("Console will auto-close in 30 seconds if no interaction...")
+                                time.sleep(30)
+                        
+                        # Free the console when done to prevent it from affecting main app
+                        try:
+                            import ctypes
+                            ctypes.windll.kernel32.FreeConsole()
+                        except:
+                            pass
+                
+                # Start in separate thread
+                achievement_thread = threading.Thread(target=run_achievements_with_console)
+                achievement_thread.daemon = True
+                achievement_thread.start()
+                
+                self.status_bar.update_status("Achievements script started in console window", "success")
+                logger.info("Achievements script started in separate thread with console")
+                
+            else:
+                # Running from source - use subprocess with new console
+                script_dir = Path(__file__).parent
+                achievements_script = script_dir / "achievements.py"
+                
+                if not achievements_script.exists():
+                    self.status_bar.update_status("achievements.py script not found!", "error")
+                    self.achievements_button.setEnabled(True)
+                    self.achievements_button.setText("Generate Achievements")
+                    return
+                
+                # Run the achievements script in new console
+                process = subprocess.Popen(
+                    [sys.executable, str(achievements_script)],
+                    cwd=str(script_dir),
+                    creationflags=subprocess.CREATE_NEW_CONSOLE if os.name == 'nt' else 0
+                )
+                
+                self.status_bar.update_status("Achievements script launched in new console window", "success")
+                
         except Exception as e:
             logger.error(f"Failed to run achievements script: {e}")
             self.status_bar.update_status(f"Failed to run achievements script: {str(e)}", "error")
