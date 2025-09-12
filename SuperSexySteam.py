@@ -2385,7 +2385,7 @@ class MainInterface(QWidget):
             if not achievements_script.exists():
                 self.status_bar.update_status("achievements.py script not found!", "error")
                 self.achievements_button.setEnabled(True)
-                self.achievements_button.setText("🏆 Generate Achievements")
+                self.achievements_button.setText("Generate Achievements")
                 return
             
             # Run the achievements script
@@ -2404,7 +2404,7 @@ class MainInterface(QWidget):
         finally:
             # Re-enable the button
             self.achievements_button.setEnabled(True)
-            self.achievements_button.setText("🏆 Generate Achievements")
+            self.achievements_button.setText("Generate Achievements")
 
 
 class SuperSexySteamApp(QMainWindow):
