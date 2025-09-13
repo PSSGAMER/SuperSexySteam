@@ -413,6 +413,92 @@ class GameDatabaseManager:
                 logger.debug("Get AppID depots exception:", exc_info=True)
                 return []
     
+    def get_depot_info(self, app_id: str, depot_id: str) -> Optional[Dict[str, str]]:
+        """
+        Get information for a specific depot.
+        
+        Args:
+            app_id (str): The Steam AppID
+            depot_id (str): The depot ID
+            
+        Returns:
+            Optional[Dict]: Depot dictionary with depot info or None if not found
+        """
+        logger.debug(f"Retrieving info for depot {depot_id} in AppID {app_id}")
+        with self._lock:
+            try:
+                conn = self._get_connection()
+                cursor = conn.cursor()
+                
+                cursor.execute('''
+                    SELECT depot_id, decryption_key, depot_name FROM depots 
+                    WHERE app_id = ? AND depot_id = ?
+                ''', (app_id, depot_id))
+                
+                result = cursor.fetchone()
+                conn.close()
+                
+                if result:
+                    depot_id_found, decryption_key, depot_name = result
+                    depot = {'depot_id': depot_id_found, 'depot_name': depot_name or 'No Name'}
+                    if decryption_key:
+                        depot['depot_key'] = decryption_key
+                    logger.debug(f"Found depot {depot_id} for AppID {app_id}")
+                    return depot
+                else:
+                    logger.debug(f"Depot {depot_id} not found for AppID {app_id}")
+                    return None
+                
+            except sqlite3.Error as e:
+                logger.error(f"Failed to get depot {depot_id} info for AppID {app_id}: {e}")
+                logger.debug("Get depot info exception:", exc_info=True)
+                return None
+    
+    def remove_depot_from_appid(self, app_id: str, depot_id: str) -> bool:
+        """
+        Remove a specific depot from an AppID.
+        
+        Args:
+            app_id (str): The Steam AppID
+            depot_id (str): The depot ID to remove
+            
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        logger.info(f"Removing depot {depot_id} from AppID {app_id}")
+        with self._lock:
+            try:
+                conn = self._get_connection()
+                cursor = conn.cursor()
+                
+                # First check if depot exists
+                cursor.execute('''
+                    SELECT COUNT(*) FROM depots 
+                    WHERE app_id = ? AND depot_id = ?
+                ''', (app_id, depot_id))
+                
+                if cursor.fetchone()[0] == 0:
+                    logger.warning(f"Depot {depot_id} not found for AppID {app_id}")
+                    conn.close()
+                    return False
+                
+                # Remove the depot
+                cursor.execute('''
+                    DELETE FROM depots 
+                    WHERE app_id = ? AND depot_id = ?
+                ''', (app_id, depot_id))
+                
+                conn.commit()
+                conn.close()
+                
+                logger.info(f"Successfully removed depot {depot_id} from AppID {app_id}")
+                return True
+                
+            except sqlite3.Error as e:
+                logger.error(f"Failed to remove depot {depot_id} from AppID {app_id}: {e}")
+                logger.debug("Remove depot exception:", exc_info=True)
+                return False
+    
     def get_manifests_for_appid(self, app_id: str) -> List[str]:
         """
         Get all manifest filenames for a specific AppID.

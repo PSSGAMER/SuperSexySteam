@@ -553,38 +553,8 @@ class InstalledGameWidget(GradientFrame):
         """)
         item_layout.addWidget(depot_label, 1)
         
-        # Green trash can button
-        delete_button = QPushButton("🗑️")
-        delete_button.setFixedSize(24, 24)
-        delete_button.setStyleSheet(f"""
-            QPushButton {{
-                background: {Theme.ACCENT_GREEN};
-                color: white;
-                border: none;
-                border-radius: 12px;
-                font-size: 12px;
-                font-weight: bold;
-                outline: none;
-            }}
-            QPushButton:hover {{
-                background: #66bb6a;
-                border: 1px solid rgba(255, 255, 255, 0.2);
-            }}
-            QPushButton:pressed {{
-                background: #4caf50;
-            }}
-        """)
-        # Connect to placeholder function (no functionality yet)
-        delete_button.clicked.connect(lambda: self.delete_depot_placeholder(depot_id))
-        item_layout.addWidget(delete_button)
-        
         return item_widget
     
-    def delete_depot_placeholder(self, depot_id):
-        """Placeholder function for depot deletion (no functionality yet)"""
-        # This is just a placeholder as requested - no actual functionality
-        print(f"Placeholder: Would delete depot {depot_id}")
-        
     def toggle_expansion(self):
         """Toggle the expansion state of the depot list"""
         if self.is_expanded:
@@ -1754,6 +1724,408 @@ class SearchDialog(QDialog):
         QTimer.singleShot(3000, lambda: self.status_label.setText("Enter a game name and click search"))
 
 
+class DepotSelectionDialog(QDialog):
+    """Dialog for selecting and managing depots after game installation"""
+    
+    depot_deleted = Signal(str, str)  # app_id, depot_id
+    
+    def __init__(self, app_id, game_name, depots, data_folder, game_installer, parent=None):
+        super().__init__(parent)
+        self.app_id = app_id
+        self.game_name = game_name
+        self.depots = depots
+        self.data_folder = data_folder
+        self.game_installer = game_installer
+        self.depot_widgets = []
+        self.setup_ui()
+        self.setup_window()
+        
+    def setup_window(self):
+        """Setup dialog window properties"""
+        self.setWindowTitle(f"Depot Selection - {self.game_name}")
+        self.setModal(True)
+        self.resize(700, 500)
+        
+        # Set window icon
+        try:
+            icon_path = Path(__file__).parent / "sss.ico"
+            if icon_path.exists():
+                self.setWindowIcon(QIcon(str(icon_path)))
+        except Exception:
+            pass
+            
+        # Apply dark theme
+        self.setStyleSheet(f"""
+            QDialog {{
+                background: {Theme.MAIN_GRADIENT};
+                color: {Theme.TEXT_PRIMARY};
+            }}
+        """)
+        
+    def setup_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(30, 30, 30, 30)
+        layout.setSpacing(20)
+        
+        # Title
+        title = QLabel(f"Depot Selection for {self.game_name}")
+        title.setStyleSheet(f"""
+            QLabel {{
+                color: {Theme.GOLD_PRIMARY};
+                font-size: 24px;
+                font-weight: bold;
+            }}
+        """)
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(title)
+        
+        # Subtitle
+        subtitle = QLabel(f"AppID: {self.app_id} • {len(self.depots)} depot(s) found")
+        subtitle.setStyleSheet(f"""
+            QLabel {{
+                color: {Theme.TEXT_SECONDARY};
+                font-size: 16px;
+                margin-bottom: 10px;
+            }}
+        """)
+        subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(subtitle)
+        
+        # Info message
+        info_label = QLabel("🗑️ Click the trash icon next to any depot you want to remove")
+        info_label.setStyleSheet(f"""
+            QLabel {{
+                color: {Theme.TEXT_SECONDARY};
+                font-size: 14px;
+                background: rgba(255, 255, 255, 0.05);
+                border-radius: 8px;
+                padding: 12px;
+                margin-bottom: 10px;
+            }}
+        """)
+        info_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(info_label)
+        
+        # Scrollable depot list
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setStyleSheet(f"""
+            QScrollArea {{
+                background: transparent;
+                border: none;
+            }}
+            QScrollBar:vertical {{
+                background: {Theme.SURFACE_DARK};
+                width: 12px;
+                border-radius: 6px;
+            }}
+            QScrollBar::handle:vertical {{
+                background: {Theme.GOLD_PRIMARY};
+                border-radius: 6px;
+                min-height: 20px;
+            }}
+            QScrollBar::handle:vertical:hover {{
+                background: {Theme.GOLD_SECONDARY};
+            }}
+        """)
+        
+        depot_container = QWidget()
+        depot_layout = QVBoxLayout(depot_container)
+        depot_layout.setSpacing(10)
+        depot_layout.setContentsMargins(10, 10, 10, 10)
+        
+        # Create depot widgets
+        for depot in self.depots:
+            depot_widget = DepotItemWidget(depot, self)
+            depot_widget.delete_requested.connect(self.on_depot_delete_requested)
+            self.depot_widgets.append(depot_widget)
+            depot_layout.addWidget(depot_widget)
+        
+        depot_layout.addStretch()
+        scroll_area.setWidget(depot_container)
+        layout.addWidget(scroll_area, 1)
+        
+        # Buttons
+        button_layout = QHBoxLayout()
+        button_layout.setSpacing(15)
+        
+        # Continue button
+        continue_button = AnimatedButton("✓ Continue with Installation")
+        continue_button.setStyleSheet(f"""
+            QPushButton {{
+                background: {Theme.ACCENT_GREEN};
+                color: {Theme.TEXT_PRIMARY};
+                border: none;
+                border-radius: 8px;
+                padding: 12px 24px;
+                font-weight: bold;
+                font-size: 14px;
+                outline: none;
+            }}
+            QPushButton:hover {{
+                background: #66bb6a;
+                border: 1px solid rgba(255, 255, 255, 0.2);
+            }}
+            QPushButton:focus {{
+                background: #66bb6a;
+                border: 2px solid {Theme.ACCENT_GREEN};
+            }}
+            QPushButton:pressed {{
+                background: #4caf50;
+            }}
+        """)
+        continue_button.clicked.connect(self.accept)
+        button_layout.addWidget(continue_button)
+        
+        button_layout.addStretch()
+        
+        # Cancel button
+        cancel_button = AnimatedButton("✖ Cancel Installation")
+        cancel_button.setStyleSheet(f"""
+            QPushButton {{
+                background: {Theme.ACCENT_RED};
+                color: {Theme.TEXT_PRIMARY};
+                border: none;
+                border-radius: 8px;
+                padding: 12px 24px;
+                font-weight: bold;
+                font-size: 14px;
+                outline: none;
+            }}
+            QPushButton:hover {{
+                background: #f44336;
+                border: 1px solid rgba(255, 255, 255, 0.2);
+            }}
+            QPushButton:focus {{
+                background: #f44336;
+                border: 2px solid {Theme.ACCENT_RED};
+            }}
+            QPushButton:pressed {{
+                background: #d32f2f;
+            }}
+        """)
+        cancel_button.clicked.connect(self.reject)
+        button_layout.addWidget(cancel_button)
+        
+        layout.addLayout(button_layout)
+    
+    def on_depot_delete_requested(self, depot_id):
+        """Handle depot deletion request"""
+        # Find the depot info
+        depot_info = None
+        for depot in self.depots:
+            if depot.get('depot_id') == depot_id:
+                depot_info = depot
+                break
+        
+        if not depot_info:
+            return
+        
+        depot_name = depot_info.get('depot_name', 'No Name')
+        
+        # Show confirmation
+        confirmation = ConfirmationOverlay(
+            title="Delete Depot",
+            message=f"Are you sure you want to remove this depot?\n\n"
+                   f"Depot ID: {depot_id}\n"
+                   f"Name: {depot_name}\n\n"
+                   f"This will remove the depot from the lua file, delete its manifest file (if present), "
+                   f"and remove it from the database.",
+            confirm_text="Delete",
+            parent=self
+        )
+        
+        if confirmation.exec() == QDialog.DialogCode.Accepted:
+            # Perform deletion
+            self.delete_depot(depot_id)
+    
+    def delete_depot(self, depot_id):
+        """Delete a depot from the game"""
+        # Show loading state
+        self.setEnabled(False)
+        self.setCursor(Qt.CursorShape.WaitCursor)
+        
+        try:
+            # Use the game installer to remove the depot
+            result = self.game_installer.remove_depot_from_game(
+                self.app_id, depot_id, self.data_folder
+            )
+            
+            if result['success']:
+                # Remove from UI
+                self.remove_depot_from_ui(depot_id)
+                
+                # Remove from internal list
+                self.depots = [d for d in self.depots if d.get('depot_id') != depot_id]
+                
+                # Update subtitle
+                subtitle_widget = self.findChild(QLabel)
+                if subtitle_widget and "depot(s) found" in subtitle_widget.text():
+                    subtitle_widget.setText(f"AppID: {self.app_id} • {len(self.depots)} depot(s) found")
+                
+                # Emit signal
+                self.depot_deleted.emit(self.app_id, depot_id)
+                
+                logger.info(f"Successfully deleted depot {depot_id} from AppID {self.app_id}")
+                
+            else:
+                # Show error
+                error_msg = '; '.join(result['errors']) if result['errors'] else "Unknown error"
+                logger.error(f"Failed to delete depot {depot_id}: {error_msg}")
+                
+                # Show error dialog
+                error_dialog = ConfirmationOverlay(
+                    title="Deletion Failed",
+                    message=f"Failed to remove depot {depot_id}:\n\n{error_msg}",
+                    confirm_text="OK",
+                    cancel_text="",
+                    parent=self
+                )
+                error_dialog.exec()
+                
+        except Exception as e:
+            logger.error(f"Exception during depot deletion: {e}")
+            error_dialog = ConfirmationOverlay(
+                title="Deletion Failed",
+                message=f"An unexpected error occurred:\n\n{str(e)}",
+                confirm_text="OK",
+                cancel_text="",
+                parent=self
+            )
+            error_dialog.exec()
+        finally:
+            self.setEnabled(True)
+            self.setCursor(Qt.CursorShape.ArrowCursor)
+    
+    def remove_depot_from_ui(self, depot_id):
+        """Remove depot widget from UI"""
+        for widget in self.depot_widgets[:]:  # Create copy to avoid modification during iteration
+            if hasattr(widget, 'depot') and widget.depot.get('depot_id') == depot_id:
+                widget.setParent(None)
+                widget.deleteLater()
+                self.depot_widgets.remove(widget)
+                break
+    
+    def accept(self):
+        """Continue installation when dialog is accepted (closed)"""
+        try:
+            logger.info(f"Depot selection complete for AppID {self.app_id}, continuing installation...")
+            
+            # Continue the installation process
+            result = self.game_installer.continue_installation(self.app_id, self.data_folder)
+            
+            if result['success']:
+                stats = result['stats']
+                logger.info(f"Installation continuation completed for AppID {self.app_id}")
+                
+                # Emit a signal to notify about successful completion
+                if hasattr(self.parent(), 'status_bar'):
+                    success_msg = f"Installation completed for AppID {self.app_id}! ({stats['depots_processed']} depots, {stats['manifests_copied']} manifests)"
+                    self.parent().status_bar.update_status(success_msg, "success")
+            else:
+                error_msg = '; '.join(result['errors']) if result['errors'] else "Installation continuation failed"
+                logger.error(f"Installation continuation failed for AppID {self.app_id}: {error_msg}")
+                
+                if hasattr(self.parent(), 'status_bar'):
+                    self.parent().status_bar.update_status(f"Installation failed: {error_msg}", "error")
+                    
+        except Exception as e:
+            logger.error(f"Error during installation continuation: {e}")
+            logger.debug("Installation continuation exception:", exc_info=True)
+            
+            if hasattr(self.parent(), 'status_bar'):
+                self.parent().status_bar.update_status(f"Installation failed: {str(e)}", "error")
+        
+        # Call parent accept to close dialog
+        super().accept()
+
+
+class DepotItemWidget(GradientFrame):
+    """Widget for displaying a single depot with delete option"""
+    
+    delete_requested = Signal(str)  # depot_id
+    
+    def __init__(self, depot, parent=None):
+        super().__init__(parent, [Theme.SURFACE_DARK, Theme.TERTIARY_DARK])
+        self.depot = depot
+        self.setup_ui()
+    
+    def setup_ui(self):
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(20, 15, 20, 15)
+        layout.setSpacing(15)
+        
+        # Depot info section
+        info_layout = QVBoxLayout()
+        
+        # Depot ID and name
+        depot_id = self.depot.get('depot_id', 'Unknown')
+        depot_name = self.depot.get('depot_name', 'No Name')
+        
+        main_label = QLabel(f"Depot ID: {depot_id}")
+        main_label.setStyleSheet(f"""
+            QLabel {{
+                color: {Theme.TEXT_PRIMARY};
+                font-size: 16px;
+                font-weight: bold;
+            }}
+        """)
+        info_layout.addWidget(main_label)
+        
+        name_label = QLabel(f"Name: {depot_name}")
+        name_label.setStyleSheet(f"""
+            QLabel {{
+                color: {Theme.TEXT_SECONDARY};
+                font-size: 14px;
+            }}
+        """)
+        info_layout.addWidget(name_label)
+        
+        # Additional info
+        has_key = 'depot_key' in self.depot and self.depot['depot_key'] is not None
+        key_status = "✓ Has decryption key" if has_key else "✗ No decryption key"
+        key_color = Theme.ACCENT_GREEN if has_key else Theme.TEXT_MUTED
+        
+        key_label = QLabel(key_status)
+        key_label.setStyleSheet(f"""
+            QLabel {{
+                color: {key_color};
+                font-size: 12px;
+                font-style: italic;
+            }}
+        """)
+        info_layout.addWidget(key_label)
+        
+        layout.addLayout(info_layout, 1)
+        
+        # Delete button
+        delete_button = QPushButton("🗑️")
+        delete_button.setFixedSize(40, 40)
+        delete_button.setStyleSheet(f"""
+            QPushButton {{
+                background: {Theme.ACCENT_RED};
+                color: white;
+                border: none;
+                border-radius: 20px;
+                font-size: 16px;
+                font-weight: bold;
+                outline: none;
+            }}
+            QPushButton:hover {{
+                background: #f44336;
+            }}
+            QPushButton:focus {{
+                background: #f44336;
+                border: 2px solid {Theme.ACCENT_RED};
+            }}
+            QPushButton:pressed {{
+                background: #d32f2f;
+            }}
+        """)
+        delete_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        delete_button.clicked.connect(lambda: self.delete_requested.emit(depot_id))
+        layout.addWidget(delete_button)
+
 
 class DropZone(GradientFrame):
     """Modern drag-and-drop zone with animations"""
@@ -2473,17 +2845,63 @@ class MainInterface(QWidget):
         # Process files using app logic
         result = self.logic.process_game_installation(files)
         
-        if result['success']:
+        if result['success'] == "waiting":
+            # Installation is paused for depot selection
+            app_id = result['app_id']
+            
+            # Check if depot popup should be shown
+            if result.get('show_depot_popup', False):
+                popup_data = result['popup_data']
+                self.show_depot_selection_popup(
+                    popup_data['app_id'],
+                    popup_data['game_name'],
+                    popup_data['depots'],
+                    popup_data['destination_directory']
+                )
+            
+            # Update status to show waiting for user input
+            self.status_bar.update_status(f"Awaiting depot selection for AppID {app_id}...", "loading")
+            
+        elif result['success']:
             action_verb = result['action_verb']
             app_id = result['app_id']
             stats = result['stats']
+            
             success_msg = f"{action_verb} AppID {app_id} successfully! ({stats['depots_processed']} depots, {stats['manifests_copied']} manifests)"
             self.status_bar.update_status(success_msg, "success")
+            
         else:
             error_msg = result.get('error', 'Installation failed')
             if 'errors' in result and result['errors']:
                 error_msg = '; '.join(result['errors'])
             self.status_bar.update_status(f"Installation failed: {error_msg}", "error")
+            
+    def show_depot_selection_popup(self, app_id, game_name, depots, data_folder):
+        """Show depot selection popup for optional depot removal"""
+        try:
+            dialog = DepotSelectionDialog(
+                app_id=app_id,
+                game_name=game_name,
+                depots=depots,
+                data_folder=data_folder,
+                game_installer=self.logic.game_installer,
+                parent=self
+            )
+            
+            # Connect signals if needed
+            dialog.depot_deleted.connect(self.on_depot_deleted)
+            
+            # Show the dialog
+            dialog.exec()
+            
+        except Exception as e:
+            logger.error(f"Error showing depot selection popup: {e}")
+            logger.debug("Depot popup exception:", exc_info=True)
+    
+    def on_depot_deleted(self, app_id, depot_id):
+        """Handle depot deletion notification"""
+        logger.info(f"Depot {depot_id} was deleted from AppID {app_id}")
+        self.status_bar.update_status(f"Depot {depot_id} removed from AppID {app_id}", "success")
             
     def launch_steam(self):
         """Launch Steam"""

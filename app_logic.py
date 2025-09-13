@@ -720,7 +720,26 @@ class SuperSexySteamLogic:
             logger.info(f"Installing game AppID {app_id} from {destination_directory}")
             install_result = self.game_installer.install_game(app_id, destination_directory)
             
-            if install_result['success']:
+            if install_result['success'] == "waiting":
+                # Installation is paused for depot selection
+                result['success'] = "waiting"
+                result['stages_completed'].append('awaiting_depot_selection')
+                result['stats'] = install_result.get('stats', {})
+                result['action_verb'] = "Installing"
+                logger.info(f"Installation paused for depot selection for AppID {app_id}")
+                
+                # Check if depot popup should be shown
+                if install_result.get('show_depot_popup', False):
+                    result['show_depot_popup'] = True
+                    result['popup_data'] = install_result['popup_data']
+                    result['popup_data']['destination_directory'] = destination_directory
+                    result['popup_data']['temp_directory'] = temp_directory  # Keep temp for continuation
+                    logger.debug(f"Depot popup requested for AppID {app_id}")
+                
+                # DO NOT clean up directories - keep them for continuation
+                return result
+                
+            elif install_result['success']:
                 result['success'] = True
                 result['stages_completed'].append('game_installed')
                 result['stats'] = install_result['stats']

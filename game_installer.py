@@ -8,7 +8,7 @@ from pathlib import Path
 import shutil
 from typing import Dict, List, Optional
 from database_manager import get_database_manager
-from lua_parser import parse_lua_for_all_depots
+from lua_parser import parse_lua_for_all_depots, parse_all_lua_files_structured
 from greenluma_manager import process_single_appid_for_greenluma, remove_appid_from_greenluma
 from vdf_updater import add_depots_to_config_vdf, remove_depots_from_config_vdf
 from depot_cache_manager import copy_manifests_for_appid, remove_manifests_for_appid
@@ -140,6 +140,22 @@ class GameInstaller:
             
             logger.info(f"Added AppID {app_id} ({game_name}) with {len(depots)} depots and {len(manifest_filenames)} manifests to database")
             
+            # Step 4.5: Show depot selection popup for optional depot removal
+            result['show_depot_popup'] = True
+            result['popup_data'] = {
+                'app_id': app_id,
+                'game_name': game_name,
+                'depots': depots,
+                'data_folder': data_folder
+            }
+            
+            # Set success to "waiting" to indicate installation is paused, not failed
+            result['success'] = "waiting"
+            
+            # Return here to show depot popup - remaining steps will continue after user selection
+            logger.info(f"Installation paused at depot selection for AppID {app_id}")
+            return result
+            
             # Step 5: Update GreenLuma
             if self.is_greenluma_path_valid:
                 try:
@@ -239,6 +255,149 @@ class GameInstaller:
         
         return result
     
+    def continue_installation(self, app_id: str, data_folder: str) -> Dict[str, any]:
+        """
+        Continue installation after depot selection popup is handled.
+        This completes steps 5-8 of the installation process.
+        
+        Args:
+            app_id (str): The Steam AppID being installed
+            data_folder (str): Path to the folder containing the game's lua and manifest files
+            
+        Returns:
+            Dict[str, any]: Result dictionary with success status, errors, and statistics
+        """
+        logger.info(f"Continuing installation for AppID {app_id} after depot selection")
+        logger.debug(f"Data folder: {data_folder}")
+        
+        result = {
+            'success': False,
+            'errors': [],
+            'warnings': [],
+            'stats': {
+                'depots_processed': 0,
+                'manifests_copied': 0,
+                'manifests_tracked': 0,
+                'greenluma_updated': False,
+                'config_vdf_updated': False,
+                'acf_generated': False
+            }
+        }
+        
+        try:
+            # Parse lua file again to get current depot state (after potential removals)
+            all_apps = parse_all_lua_files_structured(data_folder)
+            if not all_apps or len(all_apps) == 0:
+                error_msg = "Failed to parse lua files for continuation"
+                logger.error(error_msg)
+                result['errors'].append(error_msg)
+                return result
+            
+            app_data = all_apps[0]  # Get first app
+            depots = app_data['depots']
+            result['stats']['depots_processed'] = len(depots)
+            
+            logger.info(f"Continuing with {len(depots)} depots after selection")
+            
+            # Step 5: Update GreenLuma
+            if self.is_greenluma_path_valid:
+                try:
+                    logger.debug(f"Updating GreenLuma for AppID {app_id}")
+                    greenluma_result = process_single_appid_for_greenluma(str(self.greenluma_path), app_id, depots)
+                    if greenluma_result['success']:
+                        result['stats']['greenluma_updated'] = True
+                        logger.info(f"GreenLuma updated successfully for AppID {app_id}")
+                    else:
+                        warning_msg = f"GreenLuma update warnings: {greenluma_result.get('errors', [])}"
+                        logger.warning(warning_msg)
+                        result['warnings'].extend(greenluma_result.get('errors', []))
+                except Exception as e:
+                    warning_msg = f"GreenLuma update failed: {e}"
+                    logger.warning(warning_msg)
+                    logger.debug("GreenLuma update exception:", exc_info=True)
+                    result['warnings'].append(warning_msg)
+            else:
+                warning_msg = "Invalid GreenLuma path, skipping GreenLuma update"
+                logger.warning(warning_msg)
+                result['warnings'].append(warning_msg)
+            
+            # Step 6: Update config.vdf
+            if self.is_steam_path_valid:
+                try:
+                    config_vdf_path = self.steam_path / 'config' / 'config.vdf'
+                    logger.debug(f"Updating config.vdf at: {config_vdf_path}")
+                    
+                    # Only add depots that have decryption keys
+                    depots_with_keys = [d for d in depots if 'depot_key' in d]
+                    logger.debug(f"Found {len(depots_with_keys)} depots with keys out of {len(depots)} total")
+                    
+                    if depots_with_keys:
+                        vdf_success = add_depots_to_config_vdf(str(config_vdf_path), depots_with_keys)
+                        if vdf_success:
+                            result['stats']['config_vdf_updated'] = True
+                            logger.info(f"Config.vdf updated with {len(depots_with_keys)} depot keys")
+                        else:
+                            warning_msg = "Failed to update config.vdf"
+                            logger.warning(warning_msg)
+                            result['warnings'].append(warning_msg)
+                    else:
+                        logger.info(f"No depot keys to add to config.vdf for AppID {app_id}")
+                except Exception as e:
+                    warning_msg = f"Config.vdf update failed: {e}"
+                    logger.warning(warning_msg)
+                    logger.debug("Config.vdf update exception:", exc_info=True)
+                    result['warnings'].append(warning_msg)
+            else:
+                warning_msg = "Invalid Steam path, skipping config.vdf update"
+                logger.warning(warning_msg)
+                result['warnings'].append(warning_msg)
+            
+            # Step 7: Copy manifest files to depot cache
+            if self.is_steam_path_valid:
+                try:
+                    logger.debug(f"Copying manifest files to depot cache for AppID {app_id}")
+                    manifest_stats = copy_manifests_for_appid(str(self.steam_path), app_id, data_folder)
+                    result['stats']['manifests_copied'] = manifest_stats.get('copied_count', 0)
+                    if manifest_stats.get('copied_count', 0) > 0:
+                        logger.info(f"Copied {manifest_stats['copied_count']} manifest files to depot cache")
+                    else:
+                        logger.info(f"No manifest files found to copy for AppID {app_id}")
+                except Exception as e:
+                    warning_msg = f"Depot cache update failed: {e}"
+                    logger.warning(warning_msg)
+                    logger.debug("Depot cache update exception:", exc_info=True)
+                    result['warnings'].append(warning_msg)
+            
+            # Step 8: Generate ACF file
+            if self.is_steam_path_valid:
+                try:
+                    logger.debug(f"Generating ACF file for AppID {app_id}")
+                    acf_success = generate_acf_for_appid(str(self.steam_path), app_id)
+                    if acf_success:
+                        result['stats']['acf_generated'] = True
+                        logger.info(f"ACF file generated successfully for AppID {app_id}")
+                    else:
+                        warning_msg = "Failed to generate ACF file"
+                        logger.warning(warning_msg)
+                        result['warnings'].append(warning_msg)
+                except Exception as e:
+                    warning_msg = f"ACF generation failed: {e}"
+                    logger.warning(warning_msg)
+                    logger.debug("ACF generation exception:", exc_info=True)
+                    result['warnings'].append(warning_msg)
+            
+            result['success'] = True
+            logger.info(f"Installation continuation completed successfully for AppID {app_id}")
+            logger.debug(f"Installation stats: {result['stats']}")
+            
+        except Exception as e:
+            error_msg = f"Unexpected error during installation continuation: {e}"
+            logger.error(error_msg)
+            logger.debug("Installation continuation exception:", exc_info=True)
+            result['errors'].append(error_msg)
+        
+        return result
+
     def uninstall_game(self, app_id: str) -> Dict[str, any]:
         """
         Uninstall a game by calling the centralized uninstaller from system_cleaner.
@@ -256,6 +415,164 @@ class GameInstaller:
         # This unified function handles all aspects of uninstallation.
         # remove_data_folder is True because an update implies replacing the old data.
         return uninstall_specific_appid(self.config, app_id)
+    
+    def remove_depot_from_game(self, app_id: str, depot_id: str, data_folder: str) -> Dict[str, any]:
+        """
+        Remove a specific depot from an installed game.
+        This includes removing from lua file, manifest files, and database.
+        
+        Args:
+            app_id (str): The Steam AppID
+            depot_id (str): The depot ID to remove
+            data_folder (str): Path to the data folder containing lua and manifest files
+            
+        Returns:
+            Dict[str, any]: Result dictionary with success status and details
+        """
+        logger.info(f"Removing depot {depot_id} from AppID {app_id}")
+        
+        result = {
+            'success': False,
+            'depot_id': depot_id,
+            'errors': [],
+            'warnings': [],
+            'actions_completed': []
+        }
+        
+        try:
+            # First, get depot info from database to check if it has a decryption key
+            depot_info = self.db.get_depot_info(app_id, depot_id)
+            if not depot_info:
+                error_msg = f"Depot {depot_id} not found in database for AppID {app_id}"
+                logger.error(error_msg)
+                result['errors'].append(error_msg)
+                return result
+            
+            has_decryption_key = 'depot_key' in depot_info and depot_info['depot_key'] is not None
+            logger.debug(f"Depot {depot_id} has decryption key: {has_decryption_key}")
+            
+            data_folder_path = Path(data_folder)
+            
+            # Step 1: Remove from lua file
+            lua_files = list(data_folder_path.glob("*.lua"))
+            if lua_files:
+                lua_file = lua_files[0]  # Use first lua file found
+                logger.debug(f"Removing depot {depot_id} from lua file: {lua_file}")
+                
+                if self._remove_depot_from_lua_file(str(lua_file), depot_id, has_decryption_key):
+                    result['actions_completed'].append('lua_updated')
+                    logger.info(f"Successfully removed depot {depot_id} from lua file")
+                else:
+                    warning_msg = f"Failed to remove depot {depot_id} from lua file"
+                    logger.warning(warning_msg)
+                    result['warnings'].append(warning_msg)
+            else:
+                warning_msg = f"No lua file found in {data_folder_path}"
+                logger.warning(warning_msg)
+                result['warnings'].append(warning_msg)
+            
+            # Step 2: Remove manifest files if depot had decryption key
+            if has_decryption_key:
+                # Find all manifest files that start with {depot_id}_
+                matching_manifests = list(data_folder_path.glob(f"{depot_id}_*.manifest"))
+                if matching_manifests:
+                    deleted_count = 0
+                    for manifest_file in matching_manifests:
+                        try:
+                            manifest_file.unlink()
+                            deleted_count += 1
+                            logger.info(f"Deleted manifest file: {manifest_file}")
+                        except Exception as e:
+                            warning_msg = f"Failed to delete manifest file {manifest_file}: {e}"
+                            logger.warning(warning_msg)
+                            result['warnings'].append(warning_msg)
+                    
+                    if deleted_count > 0:
+                        result['actions_completed'].append('manifest_deleted')
+                        if deleted_count > 1:
+                            logger.info(f"Deleted {deleted_count} manifest files for depot {depot_id}")
+                else:
+                    logger.debug(f"No manifest files found for depot {depot_id} (pattern: {depot_id}_*.manifest)")
+            
+            # Step 3: Remove from database
+            if self.db.remove_depot_from_appid(app_id, depot_id):
+                result['actions_completed'].append('database_updated')
+                logger.info(f"Successfully removed depot {depot_id} from database")
+                result['success'] = True
+            else:
+                error_msg = f"Failed to remove depot {depot_id} from database"
+                logger.error(error_msg)
+                result['errors'].append(error_msg)
+                return result
+            
+            logger.info(f"Successfully removed depot {depot_id} from AppID {app_id}")
+            
+        except Exception as e:
+            error_msg = f"Unexpected error removing depot {depot_id}: {e}"
+            logger.error(error_msg)
+            logger.debug("Depot removal exception:", exc_info=True)
+            result['errors'].append(error_msg)
+        
+        return result
+    
+    def _remove_depot_from_lua_file(self, lua_file_path: str, depot_id: str, has_decryption_key: bool) -> bool:
+        """
+        Remove depot entries from lua file.
+        Removes both addappid() and setManifestid() lines for the depot.
+        
+        Args:
+            lua_file_path (str): Path to the lua file
+            depot_id (str): Depot ID to remove
+            has_decryption_key (bool): Whether the depot has a decryption key
+            
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        try:
+            lua_path = Path(lua_file_path)
+            if not lua_path.exists():
+                logger.error(f"Lua file not found: {lua_file_path}")
+                return False
+            
+            # Read the lua file
+            with open(lua_path, 'r', encoding='utf-8') as f:
+                lines = f.readlines()
+            
+            # Track lines to keep
+            new_lines = []
+            removed_lines = 0
+            
+            for line in lines:
+                line_stripped = line.strip()
+                should_remove = False
+                
+                # Check for addappid line with this depot
+                if (f'addappid({depot_id},' in line or f'addappid({depot_id})' in line or 
+                    f'addappid("{depot_id}"' in line or f"addappid('{depot_id}'" in line):
+                    should_remove = True
+                    logger.debug(f"Removing addappid line for depot {depot_id}: {line_stripped}")
+                
+                # Check for setManifestid line if depot has decryption key
+                elif has_decryption_key and (f'setManifestid({depot_id},' in line or 
+                                           f'setManifestid("{depot_id}"' in line or f"setManifestid('{depot_id}'" in line):
+                    should_remove = True
+                    logger.debug(f"Removing setManifestid line for depot {depot_id}: {line_stripped}")
+                
+                if not should_remove:
+                    new_lines.append(line)
+                else:
+                    removed_lines += 1
+            
+            # Write back the modified content
+            with open(lua_path, 'w', encoding='utf-8') as f:
+                f.writelines(new_lines)
+            
+            logger.info(f"Removed {removed_lines} lines from lua file for depot {depot_id}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error removing depot {depot_id} from lua file {lua_file_path}: {e}")
+            return False
     
     def validate_installation(self, app_id: str) -> Dict[str, any]:
         """

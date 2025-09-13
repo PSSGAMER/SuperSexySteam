@@ -154,8 +154,9 @@ The installer will:
 - You are not recommended to switch Steam accounts unless you do not care about the achievements
 - If you want to switch accounts and also have offline achievements, rememember to only use this app with one account as it stores the currently logged SteamID for achievements at first boot
 
-#### The Dropdown in Installed Games is showing no data
-- If the dropdown is showing Unknown - No Name or something like that, this means your lua file was not commented with the depot names, leave it be, it does not affect functionality
+#### The Widget during installation and dropdown in Installed Games is showing no data
+- If  it's is showing Unknown - No Name or something like that, this means your lua file was not commented with the depot names, leave it be if you don't intend to use the modular installation, it does not affect functionality.
+- If you do want to use the modular installation, open SteamDB and navigate to packages
 
 ## 🤝 Contributing
 
