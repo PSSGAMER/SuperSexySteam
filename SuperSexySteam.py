@@ -54,6 +54,17 @@ logging.basicConfig(
     handlers=[stream_handler]
 )
 
+# Suppress verbose logs from Steam client and related libraries
+# These libraries generate excessive DEBUG logs that clutter the output
+logging.getLogger('steam').setLevel(logging.WARNING)
+logging.getLogger('SteamClient').setLevel(logging.WARNING)
+logging.getLogger('CMServerList').setLevel(logging.WARNING)
+logging.getLogger('Connection').setLevel(logging.WARNING)
+logging.getLogger('urllib3').setLevel(logging.WARNING)
+logging.getLogger('urllib3.connectionpool').setLevel(logging.WARNING)
+logging.getLogger('requests').setLevel(logging.WARNING)
+logging.getLogger('connection').setLevel(logging.WARNING)
+
 # Get logger for this module
 logger = logging.getLogger(__name__)
 
@@ -2967,6 +2978,8 @@ class MainInterface(QWidget):
         
         if result['success']:
             self.status_bar.update_status(f"Data cleared! {result['summary']}", "success")
+            # Close the application after successfully clearing data
+            QApplication.instance().quit()
         else:
             self.status_bar.update_status(f"Failed to clear data: {result['error']}", "error")
     

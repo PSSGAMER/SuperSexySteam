@@ -14,6 +14,23 @@ from typing import List, Dict, Union
 # Configure logging
 logger = logging.getLogger(__name__)
 
+# Comprehensive suppression of Steam client and related verbose logs
+# This must be done after importing steam.client to catch all internal loggers
+verbose_loggers = [
+    'steam', 'SteamClient', 'CMServerList', 'Connection', 
+    'urllib3', 'urllib3.connectionpool', 'requests',
+    'steam.client', 'steam.core', 'steam.enums'
+]
+
+for logger_name in verbose_loggers:
+    logging.getLogger(logger_name).setLevel(logging.WARNING)
+
+# Also try to suppress any logger that might have been created by the steam library
+# by setting a higher threshold for any logger containing 'steam' in its name
+for name in list(logging.Logger.manager.loggerDict.keys()):
+    if any(keyword in name.lower() for keyword in ['steam', 'urllib3', 'connection']):
+        logging.getLogger(name).setLevel(logging.WARNING)
+
 class ManifestGenerator:
     """
     A class to handle the generation of Steam appmanifest.acf files.
