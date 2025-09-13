@@ -93,7 +93,12 @@ class GameInstaller:
         }
         
         try:
-            # Step 1: Parse the lua file to extract depot information
+            # Step 1: Fetch game name from Steam API first
+            logger.debug(f"Fetching game name for AppID {app_id}")
+            game_name = get_game_name_by_appid(app_id)
+            logger.info(f"Retrieved game name: {game_name}")
+            
+            # Step 2: Parse the lua file to extract depot information (with game name for proper depot naming)
             data_folder_path = Path(data_folder)
             lua_file = data_folder_path / f"{app_id}.lua"
             logger.debug(f"Looking for lua file: {lua_file}")
@@ -104,8 +109,8 @@ class GameInstaller:
                 result['errors'].append(error_msg)
                 return result
             
-            logger.debug(f"Parsing lua file: {lua_file}")
-            lua_result = parse_lua_for_all_depots(str(lua_file))
+            logger.debug(f"Parsing lua file with game name '{game_name}': {lua_file}")
+            lua_result = parse_lua_for_all_depots(str(lua_file), game_name)
             if not lua_result or not lua_result.get('depots'):
                 error_msg = f"No depots found in lua file: {lua_file}"
                 logger.error(error_msg)
@@ -116,12 +121,7 @@ class GameInstaller:
             result['stats']['depots_processed'] = len(depots)
             logger.info(f"Found {len(depots)} depots in lua file")
             logger.debug(f"Depot IDs: {[d.get('depot_id', 'unknown') for d in depots]}")
-            
-            # Step 2: Fetch game name from Steam API
-            logger.debug(f"Fetching game name for AppID {app_id}")
-            game_name = get_game_name_by_appid(app_id)
-            logger.info(f"Retrieved game name: {game_name}")
-            
+
             # Step 3: Collect manifest file names for database tracking
             logger.debug(f"Collecting manifest files from: {data_folder_path}")
             manifest_files = list(data_folder_path.glob("*.manifest"))

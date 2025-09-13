@@ -277,15 +277,38 @@ class SuperSexySteamLogic:
     
     def get_installed_games(self) -> Dict[str, Any]:
         """
-        Get list of all installed games.
+        Get list of all installed games with depot information.
         
         Returns:
             Dict containing list of installed games with success flag
         """
-        logger.debug("Retrieving installed games list")
+        logger.debug("Retrieving installed games list with depot data")
         try:
             games = self.db.get_installed_games()
-            logger.info(f"Retrieved {len(games)} installed games")
+            
+            # Add depot information to each game
+            for game in games:
+                app_id = game.get('app_id')
+                depots = []
+                
+                if app_id:
+                    try:
+                        # Get depot data for this app
+                        depot_data = self.db.get_appid_depots(app_id)
+                        if depot_data:
+                            # Convert to list of depot dictionaries
+                            for depot in depot_data:
+                                depot_info = {
+                                    'depot_id': depot.get('depot_id', 'Unknown'),
+                                    'depot_name': depot.get('depot_name', 'No Name')
+                                }
+                                depots.append(depot_info)
+                    except Exception as depot_error:
+                        logger.warning(f"Failed to get depots for AppID {app_id}: {depot_error}")
+                
+                game['depots'] = depots
+            
+            logger.info(f"Retrieved {len(games)} installed games with depot information")
             return {
                 'success': True,
                 'games': games,

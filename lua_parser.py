@@ -16,6 +16,87 @@ logger = logging.getLogger(__name__)
 # --- LUA PARSING FUNCTIONS ---
 # =============================================================================
 
+def extract_depot_name_from_comment(raw_line, game_name=None):
+    """
+    Extracts depot name from comment in Lua line.
+    
+    Expected formats:
+    - # Game Name DepotID name
+    - -- Game Name DepotID name
+    
+    Args:
+        raw_line (str): Raw line from Lua file that may contain a comment
+        game_name (str, optional): Game name to remove as prefix
+        
+    Returns:
+        str or None: The depot name if found, None otherwise
+    """
+    comment_text = None
+    
+    # Look for comments starting with # or --
+    if ' -- ' in raw_line:
+        # Comment with -- in the middle of line
+        comment_start = raw_line.find(' -- ')
+        comment_text = raw_line[comment_start + 4:].strip()
+    elif raw_line.strip().startswith('-- '):
+        # Comment with -- at the beginning of line
+        comment_text = raw_line.strip()[3:].strip()
+    elif ' # ' in raw_line:
+        # Comment with # in the middle of line
+        comment_start = raw_line.find(' # ')
+        comment_text = raw_line[comment_start + 3:].strip()
+    elif raw_line.strip().startswith('# '):
+        # Comment with # at the beginning of line
+        comment_text = raw_line.strip()[2:].strip()
+    
+    if not comment_text:
+        return None
+    
+    # Strategy: Remove the game name prefix and keep the rest as depot name
+    cleaned_comment = comment_text
+    
+    # If we have a game name, try to remove it as prefix
+    if game_name:
+        if cleaned_comment.startswith(game_name):
+            cleaned_comment = cleaned_comment[len(game_name):].strip()
+            # Remove any leading dash or space
+            if cleaned_comment.startswith('-'):
+                cleaned_comment = cleaned_comment[1:].strip()
+    
+    # If we have something left after removing prefix, that's our depot name
+    if cleaned_comment:
+        logger.debug(f"Extracted depot name from comment: '{cleaned_comment}'")
+        return cleaned_comment
+    
+    # Fallback: if no prefix was found, try to extract meaningful parts
+    parts = comment_text.split()
+    if len(parts) >= 2:
+        # Strategy: Find the first numeric depot ID and take everything after it as name
+        depot_id_found = False
+        for i, part in enumerate(parts):
+            if part.isdigit() and len(part) >= 4:  # Looks like a depot ID
+                # Take everything after the depot ID
+                if i < len(parts) - 1:
+                    depot_name = ' '.join(parts[i + 1:])
+                    logger.debug(f"Extracted depot name after depot ID: '{depot_name}'")
+                    return depot_name
+                depot_id_found = True
+                break
+        
+        # If no depot ID found, take the last meaningful words
+        if not depot_id_found and len(parts) >= 2:
+            # Take the last 1-3 words as depot name, avoiding common words
+            skip_words = {'the', 'a', 'an', 'of', 'and', 'or', 'in', 'on', 'at', 'to', 'for', 'with'}
+            meaningful_parts = [part for part in parts if part.lower() not in skip_words]
+            
+            if meaningful_parts:
+                # Take up to 3 meaningful words
+                depot_name = ' '.join(meaningful_parts[-3:])
+                logger.debug(f"Extracted depot name from meaningful parts: '{depot_name}'")
+                return depot_name
+    
+    return None
+
 def preprocess_lua_line(line):
     """
     Preprocesses a Lua line by removing comments and normalizing whitespace.
@@ -155,13 +236,14 @@ def extract_function_calls(line, function_name):
     return cleaned_args
 
 
-def parse_lua_for_depots(lua_path):
+def parse_lua_for_depots(lua_path, game_name=None):
     """
     Reads a given .lua file and extracts all DepotID that have a corresponding
     DepotKey, properly distinguishing between the AppID (from filename) and actual DepotID.
 
     Args:
         lua_path (str or Path): The full path to the .lua file to be parsed.
+        game_name (str, optional): Game name to use for depot name extraction.
 
     Returns:
         list: A list of dictionaries. Each dictionary represents a found depot
@@ -178,9 +260,18 @@ def parse_lua_for_depots(lua_path):
     
     extracted_depots = []
     try:
+        # Use provided game name or fallback to None
+        if game_name:
+            logger.debug(f"Using provided game name for depot extraction: '{game_name}'")
+        else:
+            logger.debug("No game name provided for parse_lua_for_depots - depot names may include game name prefixes")
+        
         with lua_path.open('r', encoding='utf-8') as f:
             for line_num, raw_line in enumerate(f, 1):
                 try:
+                    # Try to extract depot name from comment first
+                    depot_name_from_comment = extract_depot_name_from_comment(raw_line, game_name)
+                    
                     # Preprocess the line
                     line = preprocess_lua_line(raw_line)
                     
@@ -194,11 +285,13 @@ def parse_lua_for_depots(lua_path):
                         
                         # Validate depot_id is numeric and has a non-empty key
                         if depot_id.isdigit() and depot_key.strip() and depot_id != app_id:
-                            extracted_depots.append({
+                            depot_data = {
                                 'depot_id': depot_id,
-                                'depot_key': depot_key
-                            })
-                            logger.debug(f"Found adddepot: {depot_id} with key")
+                                'depot_key': depot_key,
+                                'depot_name': depot_name_from_comment or 'No Name'
+                            }
+                            extracted_depots.append(depot_data)
+                            logger.debug(f"Found adddepot: {depot_id} with key and name '{depot_data['depot_name']}'")
                             continue
                     
                     # Check for addappid calls with key
@@ -208,11 +301,13 @@ def parse_lua_for_depots(lua_path):
                         
                         # Validate depot_id is numeric and has a non-empty key
                         if (depot_id.isdigit() and depot_key.strip() and depot_id != app_id):
-                            extracted_depots.append({
+                            depot_data = {
                                 'depot_id': depot_id,
-                                'depot_key': depot_key
-                            })
-                            logger.debug(f"Found addappid: {depot_id} with key")
+                                'depot_key': depot_key,
+                                'depot_name': depot_name_from_comment or 'No Name'
+                            }
+                            extracted_depots.append(depot_data)
+                            logger.debug(f"Found addappid: {depot_id} with key and name '{depot_data['depot_name']}'")
                 
                 except Exception as e:
                     logger.warning(f"Error parsing line {line_num} in {lua_path.name}: {e}")
@@ -229,7 +324,7 @@ def parse_lua_for_depots(lua_path):
     return extracted_depots
 
 
-def parse_lua_for_all_depots(lua_path):
+def parse_lua_for_all_depots(lua_path, game_name=None):
     """
     Reads a given .lua file and extracts all DepotID from addappid and adddepot calls,
     properly distinguishing between the AppID (from filename) and actual DepotIDs.
@@ -239,6 +334,7 @@ def parse_lua_for_all_depots(lua_path):
 
     Args:
         lua_path (str or Path): The full path to the .lua file to be parsed.
+        game_name (str, optional): Game name to use for depot name extraction.
 
     Returns:
         dict: A dictionary with 'app_id' (from filename) and 'depots' (list of depot dicts).
@@ -263,9 +359,18 @@ def parse_lua_for_all_depots(lua_path):
 
     extracted_depots = []
     try:
+        # Use provided game name or fallback to None
+        if game_name:
+            logger.debug(f"Using provided game name for depot extraction: '{game_name}'")
+        else:
+            logger.debug("No game name provided for parse_lua_for_all_depots - depot names may include game name prefixes")
+        
         with lua_path.open('r', encoding='utf-8') as f:
             for line_num, raw_line in enumerate(f, 1):
                 try:
+                    # Try to extract depot name from comment first
+                    depot_name_from_comment = extract_depot_name_from_comment(raw_line, game_name)
+                    
                     # Preprocess the line
                     line = preprocess_lua_line(raw_line)
                     
@@ -304,6 +409,13 @@ def parse_lua_for_all_depots(lua_path):
                                 else:
                                     logger.debug(f"Found addappid depot {depot_id} without key")
                     
+                    # Add depot name if found in comment and depot was parsed
+                    if depot_data and depot_name_from_comment:
+                        depot_data['depot_name'] = depot_name_from_comment
+                        logger.debug(f"Added depot name '{depot_name_from_comment}' to depot {depot_data['depot_id']}")
+                    elif depot_data:
+                        depot_data['depot_name'] = 'No Name'
+                    
                     # Add or update depot data
                     if depot_data:
                         # Check if we already have this depot
@@ -315,6 +427,12 @@ def parse_lua_for_all_depots(lua_path):
                             if 'depot_key' in depot_data and 'depot_key' not in existing_depot:
                                 existing_depot['depot_key'] = depot_data['depot_key']
                                 logger.debug(f"Updated depot {depot_data['depot_id']} with key")
+                            # Update with name if this entry has one and existing doesn't or existing has 'No Name'
+                            if ('depot_name' in depot_data and 
+                                depot_data['depot_name'] != 'No Name' and 
+                                (('depot_name' not in existing_depot) or existing_depot.get('depot_name') == 'No Name')):
+                                existing_depot['depot_name'] = depot_data['depot_name']
+                                logger.debug(f"Updated depot {depot_data['depot_id']} with name")
                         else:
                             # Add new depot
                             extracted_depots.append(depot_data)

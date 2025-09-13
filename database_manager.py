@@ -62,6 +62,7 @@ class GameDatabaseManager:
                         depot_id TEXT PRIMARY KEY,
                         app_id TEXT NOT NULL,
                         decryption_key TEXT,
+                        depot_name TEXT DEFAULT 'No Name',
                         date_added TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                         FOREIGN KEY (app_id) REFERENCES appids (app_id) ON DELETE CASCADE
                     )
@@ -245,14 +246,15 @@ class GameDatabaseManager:
                 for depot in depots:
                     depot_id = depot.get('depot_id')
                     decryption_key = depot.get('depot_key')  # Can be None
+                    depot_name = depot.get('depot_name', 'No Name')  # Default to 'No Name'
                     
                     if depot_id:
                         cursor.execute('''
-                            INSERT INTO depots (depot_id, app_id, decryption_key)
-                            VALUES (?, ?, ?)
-                        ''', (depot_id, app_id, decryption_key))
+                            INSERT INTO depots (depot_id, app_id, decryption_key, depot_name)
+                            VALUES (?, ?, ?, ?)
+                        ''', (depot_id, app_id, decryption_key, depot_name))
                         depot_count += 1
-                        logger.debug(f"Added depot {depot_id} for AppID {app_id}")
+                        logger.debug(f"Added depot {depot_id} ({depot_name}) for AppID {app_id}")
 
                 # Insert new manifest files
                 manifest_count = 0
@@ -388,7 +390,7 @@ class GameDatabaseManager:
                 cursor = conn.cursor()
                 
                 cursor.execute('''
-                    SELECT depot_id, decryption_key FROM depots 
+                    SELECT depot_id, decryption_key, depot_name FROM depots 
                     WHERE app_id = ? 
                     ORDER BY depot_id
                 ''', (app_id,))
@@ -397,8 +399,8 @@ class GameDatabaseManager:
                 conn.close()
                 
                 depots = []
-                for depot_id, decryption_key in results:
-                    depot = {'depot_id': depot_id}
+                for depot_id, decryption_key, depot_name in results:
+                    depot = {'depot_id': depot_id, 'depot_name': depot_name or 'No Name'}
                     if decryption_key:
                         depot['depot_key'] = decryption_key
                     depots.append(depot)
@@ -540,7 +542,7 @@ class GameDatabaseManager:
                 cursor = conn.cursor()
                 
                 cursor.execute('''
-                    SELECT d.depot_id, d.app_id, d.decryption_key 
+                    SELECT d.depot_id, d.app_id, d.decryption_key, d.depot_name 
                     FROM depots d
                     JOIN appids a ON d.app_id = a.app_id
                     WHERE a.is_installed = 1
@@ -551,8 +553,8 @@ class GameDatabaseManager:
                 conn.close()
                 
                 depots = []
-                for depot_id, app_id, decryption_key in results:
-                    depot = {'depot_id': depot_id, 'app_id': app_id}
+                for depot_id, app_id, decryption_key, depot_name in results:
+                    depot = {'depot_id': depot_id, 'app_id': app_id, 'depot_name': depot_name or 'No Name'}
                     if decryption_key:
                         depot['decryption_key'] = decryption_key
                     depots.append(depot)
@@ -579,7 +581,7 @@ class GameDatabaseManager:
                 cursor = conn.cursor()
                 
                 cursor.execute('''
-                    SELECT d.depot_id, d.app_id, d.decryption_key 
+                    SELECT d.depot_id, d.app_id, d.decryption_key, d.depot_name 
                     FROM depots d
                     JOIN appids a ON d.app_id = a.app_id
                     WHERE a.is_installed = 1 AND d.decryption_key IS NOT NULL
@@ -589,7 +591,7 @@ class GameDatabaseManager:
                 results = cursor.fetchall()
                 conn.close()
                 
-                depots_with_keys = [{'depot_id': row[0], 'app_id': row[1], 'decryption_key': row[2]} 
+                depots_with_keys = [{'depot_id': row[0], 'app_id': row[1], 'decryption_key': row[2], 'depot_name': row[3] or 'No Name'} 
                         for row in results]
                 logger.debug(f"Retrieved {len(depots_with_keys)} depots with keys")
                 return depots_with_keys
@@ -769,6 +771,46 @@ class GameDatabaseManager:
         
         return updated_count
     
+    def update_depot_name(self, depot_id: str, depot_name: str) -> bool:
+        """
+        Update the name of a specific depot.
+        
+        Args:
+            depot_id (str): The depot ID to update
+            depot_name (str): The new name for the depot
+            
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        logger.debug(f"Updating name for depot {depot_id} to '{depot_name}'")
+        with self._lock:
+            try:
+                conn = self._get_connection()
+                cursor = conn.cursor()
+                
+                cursor.execute('''
+                    UPDATE depots SET depot_name = ?
+                    WHERE depot_id = ?
+                ''', (depot_name, depot_id))
+                
+                if cursor.rowcount > 0:
+                    conn.commit()
+                    conn.close()
+                    logger.info(f"Successfully updated depot {depot_id} name to '{depot_name}'")
+                    return True
+                else:
+                    conn.close()
+                    logger.warning(f"No depot found with ID {depot_id} to update")
+                    return False
+                
+            except sqlite3.Error as e:
+                logger.error(f"Failed to update depot {depot_id} name: {e}")
+                logger.debug("Update depot name exception:", exc_info=True)
+                return False
+            finally:
+                if 'conn' in locals():
+                    conn.close()
+
     def close(self):
         """Close the database connection."""
         logger.debug("Database manager close() called")

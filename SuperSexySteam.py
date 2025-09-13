@@ -380,13 +380,18 @@ class UninstallWorker(QThread):
 
 
 class InstalledGameWidget(GradientFrame):
-    """Widget to display a single installed game"""
+    """Widget to display a single installed game with expandable depot details"""
     
     uninstall_requested = Signal(str, str)  # app_id, game_name
+    expansion_requested = Signal(object)  # self
     
     def __init__(self, game_data, parent=None):
         super().__init__(parent, [Theme.SURFACE_DARK, Theme.TERTIARY_DARK])
         self.game_data = game_data
+        self.is_expanded = False
+        self.depot_widget = None
+        self.expand_button = None
+        self.parent_dialog = None  # Reference to parent dialog for exclusive expansion
         self.setup_ui()
         
     def setup_ui(self):
@@ -394,7 +399,31 @@ class InstalledGameWidget(GradientFrame):
         layout.setContentsMargins(20, 15, 20, 15)
         layout.setSpacing(12)
         
-        # Top row: Game name
+        # Top section: Game name with expand button
+        top_layout = QHBoxLayout()
+        
+        # Expand/collapse button
+        self.expand_button = QPushButton("▶")
+        self.expand_button.setFixedSize(20, 20)
+        self.expand_button.setStyleSheet(f"""
+            QPushButton {{
+                background: transparent;
+                color: {Theme.GOLD_PRIMARY};
+                border: none;
+                font-size: 12px;
+                font-weight: bold;
+                padding: 0px;
+                outline: none;
+            }}
+            QPushButton:hover {{
+                background: rgba(255, 255, 255, 0.1);
+                border-radius: 10px;
+            }}
+        """)
+        self.expand_button.clicked.connect(self.toggle_expansion)
+        top_layout.addWidget(self.expand_button)
+        
+        # Game name
         name_label = QLabel(self.game_data['game_name'])
         name_label.setStyleSheet(f"""
             QLabel {{
@@ -404,7 +433,9 @@ class InstalledGameWidget(GradientFrame):
             }}
         """)
         name_label.setWordWrap(True)
-        layout.addWidget(name_label)
+        top_layout.addWidget(name_label, 1)
+        
+        layout.addLayout(top_layout)
         
         # Bottom row: AppID and uninstall button
         bottom_layout = QHBoxLayout()
@@ -452,6 +483,135 @@ class InstalledGameWidget(GradientFrame):
         
         layout.addLayout(bottom_layout)
         
+        # Create depot widget (initially hidden)
+        self.create_depot_widget()
+        layout.addWidget(self.depot_widget)
+        
+    def create_depot_widget(self):
+        """Create the expandable depot list widget"""
+        self.depot_widget = QWidget()
+        depot_layout = QVBoxLayout(self.depot_widget)
+        depot_layout.setContentsMargins(30, 10, 10, 10)
+        depot_layout.setSpacing(8)
+        
+        # Get depots from game data (assuming it's available)
+        depots = self.game_data.get('depots', [])
+        
+        if depots:
+            # Depot list header
+            header_label = QLabel("Depot Details:")
+            header_label.setStyleSheet(f"""
+                QLabel {{
+                    color: {Theme.GOLD_SECONDARY};
+                    font-size: 14px;
+                    font-weight: bold;
+                    margin-bottom: 5px;
+                }}
+            """)
+            depot_layout.addWidget(header_label)
+            
+            # Individual depot entries
+            for depot in depots:
+                depot_item = self.create_depot_item(depot)
+                depot_layout.addWidget(depot_item)
+        else:
+            # No depots message
+            no_depots_label = QLabel("No depot information available")
+            no_depots_label.setStyleSheet(f"""
+                QLabel {{
+                    color: {Theme.TEXT_MUTED};
+                    font-size: 12px;
+                    font-style: italic;
+                }}
+            """)
+            depot_layout.addWidget(no_depots_label)
+        
+        # Initially hidden
+        self.depot_widget.hide()
+        
+    def create_depot_item(self, depot):
+        """Create a single depot item with delete button"""
+        item_widget = QWidget()
+        item_layout = QHBoxLayout(item_widget)
+        item_layout.setContentsMargins(0, 5, 0, 5)
+        item_layout.setSpacing(10)
+        
+        # Depot info
+        depot_id = depot.get('depot_id', 'Unknown')
+        depot_name = depot.get('depot_name', 'No Name')
+        depot_text = f"{depot_id} - {depot_name}"
+        
+        depot_label = QLabel(depot_text)
+        depot_label.setStyleSheet(f"""
+            QLabel {{
+                color: {Theme.TEXT_SECONDARY};
+                font-size: 13px;
+                padding: 5px 10px;
+                background: rgba(255, 255, 255, 0.05);
+                border-radius: 4px;
+            }}
+        """)
+        item_layout.addWidget(depot_label, 1)
+        
+        # Green trash can button
+        delete_button = QPushButton("🗑️")
+        delete_button.setFixedSize(24, 24)
+        delete_button.setStyleSheet(f"""
+            QPushButton {{
+                background: {Theme.ACCENT_GREEN};
+                color: white;
+                border: none;
+                border-radius: 12px;
+                font-size: 12px;
+                font-weight: bold;
+                outline: none;
+            }}
+            QPushButton:hover {{
+                background: #66bb6a;
+                border: 1px solid rgba(255, 255, 255, 0.2);
+            }}
+            QPushButton:pressed {{
+                background: #4caf50;
+            }}
+        """)
+        # Connect to placeholder function (no functionality yet)
+        delete_button.clicked.connect(lambda: self.delete_depot_placeholder(depot_id))
+        item_layout.addWidget(delete_button)
+        
+        return item_widget
+    
+    def delete_depot_placeholder(self, depot_id):
+        """Placeholder function for depot deletion (no functionality yet)"""
+        # This is just a placeholder as requested - no actual functionality
+        print(f"Placeholder: Would delete depot {depot_id}")
+        
+    def toggle_expansion(self):
+        """Toggle the expansion state of the depot list"""
+        if self.is_expanded:
+            # Collapse this widget
+            self.collapse()
+        else:
+            # Request expansion (parent will handle exclusive logic)
+            self.expansion_requested.emit(self)
+    
+    def expand(self):
+        """Expand the depot list"""
+        if not self.is_expanded:
+            self.depot_widget.show()
+            self.expand_button.setText("▼")
+            self.is_expanded = True
+    
+    def collapse(self):
+        """Collapse the depot list"""
+        if self.is_expanded:
+            self.depot_widget.hide()
+            self.expand_button.setText("▶")
+            self.is_expanded = False
+        
+    def set_parent_dialog(self, parent_dialog):
+        """Set reference to parent dialog for exclusive expansion management"""
+        self.parent_dialog = parent_dialog
+    
     def request_uninstall(self):
         """Request uninstallation of this game"""
         self.uninstall_requested.emit(
@@ -468,6 +628,8 @@ class InstalledGamesDialog(QDialog):
         self.logic = logic
         self.load_worker = None
         self.uninstall_worker = None
+        self.game_widgets = []  # List to track all game widgets
+        self.currently_expanded_widget = None  # Track currently expanded widget
         self.setup_ui()
         self.setup_window()
         self.load_games()
@@ -683,8 +845,24 @@ class InstalledGamesDialog(QDialog):
         # Ensure the widget is properly updated
         self.games_widget.update()
         
+    def handle_expansion_request(self, requesting_widget):
+        """Handle exclusive expansion - only one widget can be expanded at a time"""
+        # If there's a currently expanded widget that's different from the requesting one, collapse it
+        if (self.currently_expanded_widget and 
+            self.currently_expanded_widget != requesting_widget and 
+            self.currently_expanded_widget.is_expanded):
+            self.currently_expanded_widget.collapse()
+        
+        # Expand the requesting widget
+        requesting_widget.expand()
+        self.currently_expanded_widget = requesting_widget
+    
     def clear_games(self):
         """Clear all games from the layout"""
+        # Reset tracking variables
+        self.currently_expanded_widget = None
+        self.game_widgets.clear()
+        
         while self.games_layout.count():
             child = self.games_layout.takeAt(0)
             if child.widget():
@@ -739,6 +917,9 @@ class InstalledGamesDialog(QDialog):
         for game in games:
             game_widget = InstalledGameWidget(game)
             game_widget.uninstall_requested.connect(self.uninstall_game)
+            game_widget.expansion_requested.connect(self.handle_expansion_request)
+            game_widget.set_parent_dialog(self)
+            self.game_widgets.append(game_widget)
             self.games_layout.addWidget(game_widget)
             
         # Add stretch at the end
