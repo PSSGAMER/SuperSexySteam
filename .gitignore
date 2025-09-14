@@ -145,3 +145,5 @@ Thumbs.db
 config.ini
 data.ini
 *.bak
+
+*.db
