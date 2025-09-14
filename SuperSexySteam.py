@@ -482,7 +482,7 @@ class InstalledGameWidget(GradientFrame):
         bottom_layout.addStretch()
         
         # Refresh button
-        refresh_button = AnimatedButton("🔄 Refresh")
+        refresh_button = AnimatedButton("Refresh")
         refresh_button.setStyleSheet(f"""
             QPushButton {{
                 background: {Theme.GOLD_PRIMARY};
@@ -927,7 +927,7 @@ class InstalledGamesDialog(QDialog):
         """Handle games loading completion"""
         # Re-enable refresh button
         self.refresh_button.setEnabled(True)
-        self.refresh_button.setText("🔄 Refresh")
+        self.refresh_button.setText("Refresh")
         
         if not result['success']:
             self.status_label.setText(f"Error loading games: {result['error']}")
@@ -1001,7 +1001,7 @@ class InstalledGamesDialog(QDialog):
         """Handle uninstall completion"""
         # Re-enable refresh button
         self.refresh_button.setEnabled(True)
-        self.refresh_button.setText("🔄 Refresh")
+        self.refresh_button.setText("Refresh")
         
         if result['success']:
             self.status_label.setText(f"Successfully uninstalled {game_name}")
@@ -1034,7 +1034,7 @@ class InstalledGamesDialog(QDialog):
         """Handle refresh completion"""
         # Re-enable refresh button
         self.refresh_button.setEnabled(True)
-        self.refresh_button.setText("🔄 Refresh")
+        self.refresh_button.setText("Refresh")
         
         if result['success']:
             self.status_label.setText(f"Successfully refreshed {game_name}")
@@ -1827,6 +1827,7 @@ class DepotSelectionDialog(QDialog):
     """Dialog for selecting and managing depots after game installation"""
     
     depot_deleted = Signal(str, str)  # app_id, depot_id
+    installation_completed = Signal(dict)  # installation result
     
     def __init__(self, app_id, game_name, depots, data_folder, game_installer, parent=None):
         super().__init__(parent)
@@ -2110,6 +2111,18 @@ class DepotSelectionDialog(QDialog):
         try:
             logger.info(f"Depot selection complete for AppID {self.app_id}, continuing installation...")
             
+            # First emit signal to update UI that installation is continuing
+            progress_result = {
+                'success': 'continuing',
+                'app_id': self.app_id,
+                'message': f"Continuing installation for AppID {self.app_id}..."
+            }
+            
+            # Process events to ensure signal is delivered before continuing
+            from PySide6.QtWidgets import QApplication
+            self.installation_completed.emit(progress_result)
+            QApplication.processEvents()
+            
             # Continue the installation process
             result = self.game_installer.continue_installation(self.app_id, self.data_folder)
             
@@ -2117,23 +2130,32 @@ class DepotSelectionDialog(QDialog):
                 stats = result['stats']
                 logger.info(f"Installation continuation completed for AppID {self.app_id}")
                 
-                # Emit a signal to notify about successful completion
-                if hasattr(self.parent(), 'status_bar'):
-                    success_msg = f"Installation completed for AppID {self.app_id}! ({stats['depots_processed']} depots, {stats['manifests_copied']} manifests)"
-                    self.parent().status_bar.update_status(success_msg, "success")
+                # Emit signal to notify main window about completion
+                result['app_id'] = self.app_id
+                self.installation_completed.emit(result)
+                QApplication.processEvents()
             else:
                 error_msg = '; '.join(result['errors']) if result['errors'] else "Installation continuation failed"
                 logger.error(f"Installation continuation failed for AppID {self.app_id}: {error_msg}")
                 
-                if hasattr(self.parent(), 'status_bar'):
-                    self.parent().status_bar.update_status(f"Installation failed: {error_msg}", "error")
+                # Emit signal with error result
+                result['error_message'] = error_msg
+                result['app_id'] = self.app_id
+                self.installation_completed.emit(result)
+                QApplication.processEvents()
                     
         except Exception as e:
             logger.error(f"Error during installation continuation: {e}")
             logger.debug("Installation continuation exception:", exc_info=True)
             
-            if hasattr(self.parent(), 'status_bar'):
-                self.parent().status_bar.update_status(f"Installation failed: {str(e)}", "error")
+            # Emit signal with exception result
+            error_result = {
+                'success': False,
+                'error_message': str(e),
+                'app_id': self.app_id
+            }
+            self.installation_completed.emit(error_result)
+            QApplication.processEvents()
         
         # Call parent accept to close dialog
         super().accept()
@@ -2386,6 +2408,8 @@ class StatusBar(QStatusBar):
         
     def update_status(self, message, status_type="info", show_progress=False):
         """Update status with animation"""
+        logger.debug(f"Status bar update: '{message}' (type: {status_type}, progress: {show_progress})")
+        
         # Icon mapping
         icons = {
             "info": "ℹ",
@@ -2885,7 +2909,16 @@ class MainInterface(QWidget):
         
     def handle_files_dropped(self, files):
         """Handle dropped files"""
+        logger.info(f"Files dropped: {len(files)} files")
         self.status_bar.update_status("Processing dropped files...", "loading", True)
+        
+        # Force UI update before starting processing
+        from PySide6.QtWidgets import QApplication
+        QApplication.processEvents()
+        
+        # Add a small delay to ensure the status is visible
+        import time
+        time.sleep(0.1)  # 100ms delay to ensure UI updates
         
         # Process files using app logic
         result = self.logic.process_game_installation(files)
@@ -2893,6 +2926,10 @@ class MainInterface(QWidget):
         if result['success'] == "waiting":
             # Installation is paused for depot selection
             app_id = result['app_id']
+            
+            # Update status to show waiting for user input BEFORE showing popup
+            self.status_bar.update_status(f"Depot selection required for AppID {app_id}", "info")
+            QApplication.processEvents()
             
             # Check if depot popup should be shown
             if result.get('show_depot_popup', False):
@@ -2903,9 +2940,9 @@ class MainInterface(QWidget):
                     popup_data['depots'],
                     popup_data['destination_directory']
                 )
-            
-            # Update status to show waiting for user input
-            self.status_bar.update_status(f"Awaiting depot selection for AppID {app_id}...", "loading")
+            else:
+                # No popup needed, just waiting
+                self.status_bar.update_status(f"Awaiting depot selection for AppID {app_id}...", "loading")
             
         elif result['success']:
             action_verb = result['action_verb']
@@ -2924,6 +2961,9 @@ class MainInterface(QWidget):
     def show_depot_selection_popup(self, app_id, game_name, depots, data_folder):
         """Show depot selection popup for optional depot removal"""
         try:
+            # Update status to show depot selection is active
+            self.status_bar.update_status(f"Select depots to install for {game_name}...", "info")
+            
             dialog = DepotSelectionDialog(
                 app_id=app_id,
                 game_name=game_name,
@@ -2933,20 +2973,92 @@ class MainInterface(QWidget):
                 parent=self
             )
             
-            # Connect signals if needed
+            # Connect signals
             dialog.depot_deleted.connect(self.on_depot_deleted)
+            dialog.installation_completed.connect(self.on_installation_completed)
+            
+            # Track if we received the completion signal
+            self._installation_signal_received = False
+            
+            def mark_signal_received(result):
+                self._installation_signal_received = True
+                self.on_installation_completed(result)
+            
+            dialog.installation_completed.disconnect()  # Remove previous connection
+            dialog.installation_completed.connect(mark_signal_received)
             
             # Show the dialog
-            dialog.exec()
+            result = dialog.exec()
+            
+            # Check what happened after dialog closes
+            if result == 1:  # QDialog.Accepted
+                if not self._installation_signal_received:
+                    # Dialog was accepted but no signal received - fallback
+                    logger.warning(f"Dialog accepted but no installation signal received for AppID {app_id}")
+                    self.status_bar.update_status(f"Installation status unknown for AppID {app_id}", "error")
+            elif result == 0:  # QDialog.Rejected
+                # Installation was cancelled - uninstall the partially installed game
+                logger.info(f"Installation cancelled for AppID {app_id}, removing partial installation...")
+                self.status_bar.update_status(f"Cancelling installation for AppID {app_id}...", "info")
+                
+                try:
+                    # Call the uninstall method to clean up the partially installed game
+                    uninstall_result = self.logic.uninstall_game(app_id)
+                    
+                    if uninstall_result.get('success', False):
+                        logger.info(f"Successfully cleaned up cancelled installation for AppID {app_id}")
+                        self.status_bar.update_status(f"Installation cancelled and cleaned up for AppID {app_id}", "success")
+                        
+                        # Refresh the installed games view to remove it from the list
+                        self.installed_games_dialog.load_games() if hasattr(self, 'installed_games_dialog') else None
+                    else:
+                        error_msg = uninstall_result.get('error', 'Unknown error during cleanup')
+                        logger.error(f"Failed to clean up cancelled installation for AppID {app_id}: {error_msg}")
+                        self.status_bar.update_status(f"Installation cancelled but cleanup failed for AppID {app_id}", "error")
+                        
+                except Exception as e:
+                    logger.error(f"Exception during installation cleanup for AppID {app_id}: {e}")
+                    logger.debug("Installation cleanup exception:", exc_info=True)
+                    self.status_bar.update_status(f"Installation cancelled for AppID {app_id}", "error")
             
         except Exception as e:
             logger.error(f"Error showing depot selection popup: {e}")
             logger.debug("Depot popup exception:", exc_info=True)
+            self.status_bar.update_status(f"Error showing depot selection: {str(e)}", "error")
     
     def on_depot_deleted(self, app_id, depot_id):
         """Handle depot deletion notification"""
         logger.info(f"Depot {depot_id} was deleted from AppID {app_id}")
         self.status_bar.update_status(f"Depot {depot_id} removed from AppID {app_id}", "success")
+    
+    def on_installation_completed(self, result):
+        """Handle installation completion from depot selection dialog"""
+        try:
+            app_id = result.get('app_id', 'Unknown')
+            success = result.get('success')
+            
+            logger.debug(f"Installation completion signal received for AppID {app_id}, success: {success}")
+            
+            if success == 'continuing':
+                # Installation is continuing after depot selection
+                message = result.get('message', f"Continuing installation for AppID {app_id}...")
+                self.status_bar.update_status(message, "loading")
+                logger.info(f"Installation continuing for AppID {app_id}")
+            elif success:
+                # Installation completed successfully
+                stats = result.get('stats', {})
+                success_msg = f"Installation completed for AppID {app_id}! ({stats.get('depots_processed', 0)} depots, {stats.get('manifests_copied', 0)} manifests)"
+                self.status_bar.update_status(success_msg, "success")
+                logger.info(f"Successfully completed installation for AppID {app_id}")
+            else:
+                # Installation failed
+                error_msg = result.get('error_message', 'Installation failed')
+                self.status_bar.update_status(f"Installation failed: {error_msg}", "error")
+                logger.error(f"Installation failed for AppID {app_id}: {error_msg}")
+        except Exception as e:
+            logger.error(f"Error handling installation completion: {e}")
+            logger.debug("Installation completion handler exception:", exc_info=True)
+            self.status_bar.update_status("Installation status update failed", "error")
             
     def launch_steam(self):
         """Launch Steam"""
