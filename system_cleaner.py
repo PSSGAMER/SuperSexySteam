@@ -62,6 +62,8 @@ def clear_all_data(config) -> Dict[str, any]:
     - All files from depotcache
     - All .acf files for tracked AppIDs
     - All files from GreenLuma AppList folder
+    - config.ini file deletion
+    - DLLInjector.ini restoration to original backup
     
     Args:
         config: Application configuration
@@ -81,7 +83,9 @@ def clear_all_data(config) -> Dict[str, any]:
             'depot_keys_removed': 0,
             'depotcache_files_removed': 0,
             'acf_files_removed': 0,
-            'greenluma_files_removed': 0
+            'greenluma_files_removed': 0,
+            'config_ini_removed': False,
+            'dll_injector_restored': False
         }
     }
     
@@ -166,7 +170,39 @@ def clear_all_data(config) -> Dict[str, any]:
             result['warnings'].append(f"Data folder cleanup failed: {e}")
             logger.warning(f"Data folder cleanup failed: {e}")
         
-        # Step 8: Clear database (do this last)
+        # Step 8: Delete config.ini file
+        try:
+            config_ini_file = script_dir / 'config.ini'
+            if config_ini_file.exists():
+                config_ini_file.unlink()
+                result['stats']['config_ini_removed'] = True
+                logger.info("Removed config.ini file")
+            else:
+                logger.info("Config.ini file does not exist")
+                result['stats']['config_ini_removed'] = True
+        except Exception as e:
+            result['warnings'].append(f"Config.ini cleanup failed: {e}")
+            logger.warning(f"Config.ini cleanup failed: {e}")
+        
+        # Step 9: Restore original DLLInjector.ini from backup
+        if greenluma_path:
+            try:
+                dll_injector_ini = greenluma_path / 'NormalMode' / 'DLLInjector.ini'
+                dll_injector_bak = greenluma_path / 'NormalMode' / 'DLLInjector.ini.bak'
+                
+                if dll_injector_bak.exists():
+                    # Copy backup to restore original settings
+                    shutil.copy2(dll_injector_bak, dll_injector_ini)
+                    result['stats']['dll_injector_restored'] = True
+                    logger.info("Restored original DLLInjector.ini from backup")
+                else:
+                    result['warnings'].append("DLLInjector.ini.bak not found, cannot restore original")
+                    logger.warning("DLLInjector.ini.bak not found, cannot restore original")
+            except Exception as e:
+                result['warnings'].append(f"DLLInjector.ini restore failed: {e}")
+                logger.warning(f"DLLInjector.ini restore failed: {e}")
+        
+        # Step 10: Clear database (do this last)
         try:
             db_file = Path('supersexysteam.db')
             if db_file.exists():

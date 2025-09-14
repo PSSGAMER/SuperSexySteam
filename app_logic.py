@@ -1077,6 +1077,10 @@ class SuperSexySteamLogic:
                     summary_parts.append(f"{stats['acf_files_removed']} ACF files")
                 if stats['greenluma_files_removed'] > 0:
                     summary_parts.append(f"{stats['greenluma_files_removed']} GreenLuma entries")
+                if stats.get('config_ini_removed', False):
+                    summary_parts.append("config.ini")
+                if stats.get('dll_injector_restored', False):
+                    summary_parts.append("DLLInjector.ini restored")
                 
                 summary = f"Cleared: {', '.join(summary_parts) if summary_parts else 'no data found'}"
                 logger.info(f"Successfully cleared application data: {summary}")

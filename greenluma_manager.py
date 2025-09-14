@@ -4,6 +4,7 @@
 # This module handles AppList management, DLL injector configuration,
 # and all GreenLuma-related operations for SuperSexySteam.
 
+import os
 import re
 import logging
 from pathlib import Path
@@ -172,6 +173,19 @@ def configure_greenluma_injector(steam_path, greenluma_path):
     if not injector_ini_path.exists():
         logger.error(f"DLLInjector.ini not found at: {injector_ini_path}")
         return False
+    
+    # Create backup of the DLLInjector.ini file before modifying it
+    backup_path = injector_ini_path.with_suffix('.ini.bak')
+    try:
+        logger.debug(f"Creating backup of DLLInjector.ini at: {backup_path}")
+        # Use os module to create the backup by reading and writing
+        with open(injector_ini_path, 'rb') as src, open(backup_path, 'wb') as dst:
+            dst.write(src.read())
+        logger.info(f"Successfully created backup: {backup_path}")
+    except Exception as backup_error:
+        logger.warning(f"Failed to create backup of DLLInjector.ini: {backup_error}")
+        logger.debug("Backup creation exception:", exc_info=True)
+        # Continue with the modification even if backup fails
     
     try:
         steam_exe_path = steam_path / 'Steam.exe'
