@@ -917,8 +917,6 @@ class SuperSexySteamLogic:
                     summary_parts.append(f"{stats['depot_keys_removed']} depot keys")
                 if stats['manifest_files_removed'] > 0:
                     summary_parts.append(f"{stats['manifest_files_removed']} manifest files")
-                if stats['acf_file_removed']:
-                    summary_parts.append("ACF file")
                 if stats['greenluma_files_removed'] > 0:
                     summary_parts.append(f"{stats['greenluma_files_removed']} GreenLuma entries")
                 
@@ -1073,8 +1071,6 @@ class SuperSexySteamLogic:
                     summary_parts.append(f"{stats['depot_keys_removed']} depot keys")
                 if stats['depotcache_files_removed'] > 0:
                     summary_parts.append(f"{stats['depotcache_files_removed']} manifest files")
-                if stats['acf_files_removed'] > 0:
-                    summary_parts.append(f"{stats['acf_files_removed']} ACF files")
                 if stats['greenluma_files_removed'] > 0:
                     summary_parts.append(f"{stats['greenluma_files_removed']} GreenLuma entries")
                 if stats.get('config_ini_removed', False):

@@ -12,7 +12,7 @@ from lua_parser import parse_lua_for_all_depots, parse_all_lua_files_structured
 from greenluma_manager import process_single_appid_for_greenluma, remove_appid_from_greenluma
 from vdf_updater import add_depots_to_config_vdf, remove_depots_from_config_vdf
 from depot_cache_manager import copy_manifests_for_appid, remove_manifests_for_appid
-from acfgen import generate_acf_for_appid, remove_acf_for_appid
+from acfgen import generate_acf_for_appid
 from steam_game_search import get_game_name_by_appid
 # Import the centralized uninstaller
 from system_cleaner import uninstall_specific_appid

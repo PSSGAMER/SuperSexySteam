@@ -10,7 +10,6 @@ import logging
 from database_manager import get_database_manager
 from vdf_updater import remove_depots_from_config_vdf, get_existing_depot_keys
 from depot_cache_manager import remove_manifests_for_appid, clear_all_depot_cache
-from acfgen import remove_acf_for_appid, remove_all_tracked_acf_files
 from greenluma_manager import remove_appid_from_greenluma, clear_greenluma_applist
 
 # Configure logging
@@ -60,7 +59,6 @@ def clear_all_data(config) -> Dict[str, any]:
     - Data folder deletion
     - All depot keys from config.vdf
     - All files from depotcache
-    - All .acf files for tracked AppIDs
     - All files from GreenLuma AppList folder
     - config.ini file deletion
     - DLLInjector.ini restoration to original backup
@@ -82,7 +80,6 @@ def clear_all_data(config) -> Dict[str, any]:
             'data_folder_cleared': False,
             'depot_keys_removed': 0,
             'depotcache_files_removed': 0,
-            'acf_files_removed': 0,
             'greenluma_files_removed': 0,
             'config_ini_removed': False,
             'dll_injector_restored': False
@@ -132,17 +129,7 @@ def clear_all_data(config) -> Dict[str, any]:
                 result['warnings'].append(f"Depot cache cleanup failed: {e}")
                 logger.warning(f"Depot cache cleanup failed: {e}")
         
-        # Step 5: Remove ACF files for tracked AppIDs
-        if steam_path:
-            try:
-                acf_stats = remove_all_tracked_acf_files(str(steam_path), installed_appids)
-                result['stats']['acf_files_removed'] = acf_stats.get('removed_count', 0)
-                logger.info(f"Removed {acf_stats['removed_count']} ACF files")
-            except Exception as e:
-                result['warnings'].append(f"ACF cleanup failed: {e}")
-                logger.warning(f"ACF cleanup failed: {e}")
-        
-        # Step 6: Clear GreenLuma AppList
+        # Step 5: Clear GreenLuma AppList
         if greenluma_path:
             try:
                 removed_count = clear_greenluma_applist(str(greenluma_path))
@@ -155,7 +142,7 @@ def clear_all_data(config) -> Dict[str, any]:
                 result['warnings'].append(f"GreenLuma cleanup failed: {e}")
                 logger.warning(f"GreenLuma cleanup failed: {e}")
         
-        # Step 7: Clear data folder
+        # Step 6: Clear data folder
         try:
             data_folder = script_dir / "data"
             
@@ -170,7 +157,7 @@ def clear_all_data(config) -> Dict[str, any]:
             result['warnings'].append(f"Data folder cleanup failed: {e}")
             logger.warning(f"Data folder cleanup failed: {e}")
         
-        # Step 8: Delete config.ini file
+        # Step 7: Delete config.ini file
         try:
             config_ini_file = script_dir / 'config.ini'
             if config_ini_file.exists():
@@ -184,7 +171,7 @@ def clear_all_data(config) -> Dict[str, any]:
             result['warnings'].append(f"Config.ini cleanup failed: {e}")
             logger.warning(f"Config.ini cleanup failed: {e}")
         
-        # Step 9: Restore original DLLInjector.ini from backup
+        # Step 8: Restore original DLLInjector.ini from backup
         if greenluma_path:
             try:
                 dll_injector_ini = greenluma_path / 'NormalMode' / 'DLLInjector.ini'
@@ -202,7 +189,7 @@ def clear_all_data(config) -> Dict[str, any]:
                 result['warnings'].append(f"DLLInjector.ini restore failed: {e}")
                 logger.warning(f"DLLInjector.ini restore failed: {e}")
         
-        # Step 10: Clear database (do this last)
+        # Step 9: Clear database (do this last)
         try:
             db_file = Path('supersexysteam.db')
             if db_file.exists():
@@ -236,7 +223,6 @@ def uninstall_specific_appid(config, app_id: str) -> Dict[str, any]:
     - Removing depot keys from config.vdf for this AppID
     - Removing specific manifest files from depotcache
     - Removing the specific AppID folder from data directory
-    - Removing the specific .acf file
     - Removing the specific database entry
     - Removing app .txt files from GreenLuma AppList folder
     
@@ -257,7 +243,6 @@ def uninstall_specific_appid(config, app_id: str) -> Dict[str, any]:
             'depot_keys_removed': 0,
             'manifest_files_removed': 0,
             'data_folder_removed': False,
-            'acf_file_removed': False,
             'database_entry_removed': False,
             'greenluma_files_removed': 0
         }
@@ -323,19 +308,7 @@ def uninstall_specific_appid(config, app_id: str) -> Dict[str, any]:
             result['warnings'].append(f"Data folder cleanup failed: {e}")
             logger.warning(f"Data folder cleanup failed: {e}")
         
-        # Step 6: Remove ACF file
-        if steam_path:
-            try:
-                if remove_acf_for_appid(str(steam_path), app_id):
-                    result['stats']['acf_file_removed'] = True
-                    logger.info(f"Removed ACF file for AppID {app_id}")
-                else:
-                    result['warnings'].append("Failed to remove ACF file")
-            except Exception as e:
-                result['warnings'].append(f"ACF removal failed: {e}")
-                logger.warning(f"ACF removal failed: {e}")
-        
-        # Step 7: Remove from GreenLuma
+        # Step 6: Remove from GreenLuma
         if greenluma_path:
             try:
                 greenluma_result = remove_appid_from_greenluma(str(greenluma_path), app_id, depots)
@@ -349,7 +322,7 @@ def uninstall_specific_appid(config, app_id: str) -> Dict[str, any]:
                 result['warnings'].append(f"GreenLuma removal failed: {e}")
                 logger.warning(f"GreenLuma removal failed: {e}")
         
-        # Step 8: Remove from database (do this last)
+        # Step 7: Remove from database (do this last)
         try:
             if db.remove_appid(app_id):
                 result['stats']['database_entry_removed'] = True
