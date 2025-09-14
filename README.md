@@ -25,7 +25,6 @@
 - **GreenLuma Support**: Full integration with GreenLuma 2025 for DLL injection
 - **Achievement Notifications**: Notifies when you gain any achievement and you can also see all the achievements if you set steam to offline mode
 ### 🛠️ Planned Features
-- **Auto Updater**: Automatic application updates
 - **Denuvo Token Integration**: Advanced DRM handling
 - **Auto Game Installer & Updater**: Automated game management
 
@@ -145,7 +144,7 @@ The installer will:
 
 #### Steam Client Stuck at Loading
 - Result of using offline mode with our app
-- To fix it, simply run steam from inside the main app once
+- To fix it, simply use "Fix Steam" from inside the main app once
 
 #### Antivirus Issues
 - Add an exclusion for your antivirus to `%AppData%\Roaming\SuperSexySteam`

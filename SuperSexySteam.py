@@ -2703,49 +2703,9 @@ class MainInterface(QWidget):
         self.drop_zone.setMinimumHeight(200)
         layout.addWidget(self.drop_zone, 1)
         
-        # Main action button
-        self.run_steam_button = AnimatedButton("🚀 LAUNCH STEAM")
-        # Try to set Steam icon
-        try:
-            steam_icon_path = Path(__file__).parent / "steam.ico"
-            if steam_icon_path.exists():
-                self.run_steam_button.setIcon(QIcon(str(steam_icon_path)))
-                self.run_steam_button.setText("LAUNCH STEAM")
-        except Exception:
-            pass
-        
-        self.run_steam_button.setStyleSheet(f"""
-            QPushButton {{
-                background: {Theme.GOLD_GRADIENT};
-                color: {Theme.PRIMARY_DARK};
-                border: none;
-                border-radius: 12px;
-                padding: 20px 40px;
-                font-weight: bold;
-                font-size: 18px;
-                min-height: 20px;
-                outline: none;
-            }}
-            QPushButton:hover {{
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 {Theme.GOLD_SECONDARY}, stop:1 {Theme.GOLD_PRIMARY});
-            }}
-            QPushButton:focus {{
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 {Theme.GOLD_SECONDARY}, stop:1 {Theme.GOLD_PRIMARY});
-                border: 2px solid {Theme.GOLD_PRIMARY};
-            }}
-            QPushButton:pressed {{
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 {Theme.GOLD_DARK}, stop:1 {Theme.GOLD_PRIMARY});
-            }}
-        """)
-        layout.addWidget(self.run_steam_button)
-        
         # Secondary buttons
         button_layout = QHBoxLayout()
         button_layout.setSpacing(15)
-        
-        self.search_button = AnimatedButton("Search Games")
-        self.search_button.setStyleSheet(Theme.get_button_style(Theme.BLUE_GRADIENT, Theme.TEXT_PRIMARY))
-        button_layout.addWidget(self.search_button)
         
         self.installed_button = AnimatedButton("Installed Games")
         self.installed_button.setStyleSheet(Theme.get_button_style(
@@ -2754,13 +2714,6 @@ class MainInterface(QWidget):
         ))
         button_layout.addWidget(self.installed_button)
         
-        self.uninstall_button = AnimatedButton("Uninstall Game")
-        self.uninstall_button.setStyleSheet(Theme.get_button_style(
-            f"qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 {Theme.ACCENT_RED}, stop:1 #c62828)", 
-            Theme.TEXT_PRIMARY
-        ))
-        button_layout.addWidget(self.uninstall_button)
-        
         self.clear_button = AnimatedButton("Clear Data")
         self.clear_button.setStyleSheet(Theme.get_button_style(
             f"qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 {Theme.ACCENT_ORANGE}, stop:1 #e65100)", 
@@ -2768,26 +2721,21 @@ class MainInterface(QWidget):
         ))
         button_layout.addWidget(self.clear_button)
         
-        layout.addLayout(button_layout)
-        
-        # Achievement button in a new row
-        achievement_layout = QHBoxLayout()
-        achievement_layout.setSpacing(15)
-        
-        # Add stretch to center the button
-        achievement_layout.addStretch()
-        
         self.achievements_button = AnimatedButton("Generate Achievements")
         self.achievements_button.setStyleSheet(Theme.get_button_style(
             f"qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 {Theme.ACCENT_PURPLE}, stop:1 #6a1b9a)", 
             Theme.TEXT_PRIMARY
         ))
-        achievement_layout.addWidget(self.achievements_button)
+        button_layout.addWidget(self.achievements_button)
         
-        # Add stretch to center the button
-        achievement_layout.addStretch()
+        self.fix_steam_button = AnimatedButton("Fix Steam")
+        self.fix_steam_button.setStyleSheet(Theme.get_button_style(
+            f"qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 {Theme.ACCENT_BLUE}, stop:1 #1565c0)", 
+            Theme.TEXT_PRIMARY
+        ))
+        button_layout.addWidget(self.fix_steam_button)
         
-        layout.addLayout(achievement_layout)
+        layout.addLayout(button_layout)
         
     def create_header_widget(self):
         """Create header widget with image or fallback text"""
@@ -2842,12 +2790,10 @@ class MainInterface(QWidget):
     def setup_connections(self):
         """Setup signal connections"""
         self.drop_zone.files_dropped.connect(self.handle_files_dropped)
-        self.run_steam_button.clicked.connect(self.launch_steam)
-        self.search_button.clicked.connect(self.open_search_dialog)
         self.installed_button.clicked.connect(self.open_installed_games_dialog)
-        self.uninstall_button.clicked.connect(self.uninstall_game)
         self.clear_button.clicked.connect(self.clear_data)
         self.achievements_button.clicked.connect(self.run_achievements)
+        self.fix_steam_button.clicked.connect(self.fix_steam_offline)
         
     def handle_files_dropped(self, files):
         """Handle dropped files"""
@@ -2926,6 +2872,19 @@ class MainInterface(QWidget):
         else:
             error_msg = '; '.join(result['errors']) if result['errors'] else "Failed to launch Steam"
             self.status_bar.update_status(f"Failed to launch Steam: {error_msg}", "error")
+            
+    def fix_steam_offline(self):
+        """Fix Steam offline mode without launching Steam"""
+        self.status_bar.update_status("Fixing Steam offline mode...", "loading")
+        
+        result = self.logic.fix_steam_offline()
+        
+        if result['success']:
+            final_message = result['messages'][-1] if result['messages'] else "Steam offline mode fixed successfully! ✅"
+            self.status_bar.update_status(final_message, "success")
+        else:
+            error_msg = '; '.join(result['errors']) if result['errors'] else "Failed to fix Steam offline mode"
+            self.status_bar.update_status(f"Failed to fix Steam offline mode: {error_msg}", "error")
             
     def open_search_dialog(self):
         """Open game search dialog"""

@@ -29,7 +29,7 @@ from database_manager import get_database_manager
 from game_installer import GameInstaller
 from system_cleaner import clear_all_data, uninstall_specific_appid
 from steam_game_search import search_games, find_appid
-from steam_manager import is_steam_running, terminate_steam, run_steam_with_dll_injector
+from steam_manager import is_steam_running, terminate_steam, run_steam_with_dll_injector, set_steam_offline_mode
 
 
 class SuperSexySteamLogic:
@@ -512,6 +512,77 @@ class SuperSexySteamLogic:
             logger.debug("Steam launch exception:", exc_info=True)
         
         logger.info(f"Steam launch process completed - Success: {results['success']}")
+        return results
+    
+    def fix_steam_offline(self) -> Dict[str, Any]:
+        """
+        Fix Steam offline mode issues by terminating Steam processes and preparing for launch.
+        This performs all the steps of launching Steam except the actual DLLInjector launch.
+        
+        Returns:
+            Dict with fix results and status messages
+        """
+        logger.info("Starting Steam offline mode fix process")
+        results = {
+            'success': False,
+            'messages': [],
+            'warnings': [],
+            'errors': []
+        }
+        
+        try:
+            # Step 1: Check if Steam is running
+            logger.debug("Step 1: Checking if Steam is currently running")
+            if is_steam_running():
+                logger.info("Steam is running, terminating existing processes")
+                results['messages'].append("Steam is running. Terminating existing processes...")
+                
+                # Step 2: Terminate Steam
+                logger.debug("Step 2: Terminating Steam processes")
+                terminate_result = self.terminate_steam_processes()
+                if terminate_result['success']:
+                    results['messages'].append(terminate_result['message'])
+                    logger.debug("Steam termination request successful")
+                else:
+                    results['errors'].append(terminate_result['message'])
+                    logger.error("Steam termination failed")
+                    return results
+                
+                # Step 3: Wait for processes to terminate
+                logger.debug("Step 3: Waiting for Steam to fully terminate")
+                results['messages'].append("Waiting for Steam to fully terminate...")
+                wait_result = self.wait_for_steam_termination()
+                if wait_result['terminated']:
+                    results['messages'].append(wait_result['message'])
+                    logger.debug("Steam fully terminated")
+                else:
+                    results['warnings'].append(wait_result['message'])
+                    logger.warning("Steam may not have fully terminated")
+            else:
+                logger.debug("Steam is not running, proceeding with offline mode fix")
+            
+            # Step 4: Fix offline mode
+            logger.info("Fixing Steam offline mode issues")
+            results['messages'].append("Fixing Steam offline mode...")
+            offline_fix_result = set_steam_offline_mode(self.config, offline_mode=False)
+            
+            if offline_fix_result['success']:
+                results['success'] = True
+                updated_users = offline_fix_result.get('updated_users', 0)
+                results['messages'].append(f"Steam offline mode fixed successfully! Updated {updated_users} user(s).")
+                logger.info(f"Steam offline mode fixed for {updated_users} user(s)")
+            else:
+                error_msg = '; '.join(offline_fix_result['errors'])
+                results['errors'].append(f"Failed to fix Steam offline mode: {error_msg}")
+                logger.error(f"Failed to fix Steam offline mode: {error_msg}")
+                
+        except Exception as e:
+            error_msg = f"Error fixing Steam offline mode: {e}"
+            results['errors'].append(error_msg)
+            logger.error(error_msg)
+            logger.debug("Steam offline fix exception:", exc_info=True)
+        
+        logger.info(f"Steam offline fix process completed - Success: {results['success']}")
         return results
     
     # =============================================================================
