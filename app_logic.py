@@ -951,6 +951,101 @@ class SuperSexySteamLogic:
                 'error': str(e)
             }
     
+    def refresh_game_from_data_folder(self, app_id: str, game_name: str) -> Dict[str, Any]:
+        """
+        Refresh a game by using its existing files from the data folder.
+        This simulates the drag and drop process using files already stored in data/{appid}/
+        
+        Args:
+            app_id: The AppID to refresh (as string)
+            game_name: The game name for logging purposes
+            
+        Returns:
+            Dict with refresh results
+        """
+        logger.info(f"Starting refresh for AppID: {app_id} ({game_name})")
+        
+        # Validate AppID
+        if not app_id or not app_id.strip():
+            logger.error("AppID cannot be empty for refresh")
+            return {
+                'success': False,
+                'error': "AppID cannot be empty",
+                'app_id': app_id
+            }
+        
+        app_id = app_id.strip()
+        
+        if not app_id.isdigit():
+            logger.error(f"Invalid AppID for refresh: '{app_id}'. Must be numeric.")
+            return {
+                'success': False,
+                'error': f"Invalid AppID: '{app_id}'. Must be numeric.",
+                'app_id': app_id
+            }
+        
+        try:
+            # Check if data folder exists
+            script_directory = Path(__file__).parent
+            data_folder = script_directory / "data" / app_id
+            
+            if not data_folder.exists():
+                error_msg = f"Data folder not found for AppID {app_id}. Cannot refresh without original files."
+                logger.error(error_msg)
+                return {
+                    'success': False,
+                    'error': error_msg,
+                    'app_id': app_id
+                }
+            
+            # Find .lua and .manifest files in data folder
+            lua_files = list(data_folder.glob("*.lua"))
+            manifest_files = list(data_folder.glob("*.manifest"))
+            
+            if not lua_files:
+                error_msg = f"No .lua file found in data folder for AppID {app_id}"
+                logger.error(error_msg)
+                return {
+                    'success': False,
+                    'error': error_msg,
+                    'app_id': app_id
+                }
+            
+            if len(lua_files) > 1:
+                error_msg = f"Multiple .lua files found in data folder for AppID {app_id}"
+                logger.error(error_msg)
+                return {
+                    'success': False,
+                    'error': error_msg,
+                    'app_id': app_id
+                }
+            
+            # Prepare file list for processing (lua + manifest files)
+            all_files = [str(lua_files[0])] + [str(f) for f in manifest_files]
+            logger.info(f"Found {len(all_files)} files to refresh for AppID {app_id} ({len(lua_files)} lua, {len(manifest_files)} manifest)")
+            
+            # Use existing process_game_installation method to simulate drag and drop
+            logger.info(f"Simulating drag and drop for refresh of AppID {app_id}")
+            result = self.process_game_installation(all_files)
+            
+            if result.get('success'):
+                # Update result to indicate this was a refresh operation
+                result['action_verb'] = 'Refreshed'
+                logger.info(f"Successfully refreshed AppID {app_id} ({game_name})")
+            else:
+                logger.error(f"Failed to refresh AppID {app_id}: {result.get('error', 'Unknown error')}")
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"Failed to refresh AppID {app_id}: {e}")
+            logger.debug("Refresh exception:", exc_info=True)
+            return {
+                'success': False,
+                'app_id': app_id,
+                'error': str(e)
+            }
+    
     # =============================================================================
     # --- SYSTEM CLEANUP ---
     # =============================================================================

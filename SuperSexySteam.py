@@ -390,10 +390,28 @@ class UninstallWorker(QThread):
         self.uninstall_completed.emit(result)
 
 
+class RefreshWorker(QThread):
+    """Worker thread for refreshing games"""
+    
+    refresh_completed = Signal(dict)
+    
+    def __init__(self, logic, app_id, game_name):
+        super().__init__()
+        self.logic = logic
+        self.app_id = app_id
+        self.game_name = game_name
+        
+    def run(self):
+        """Refresh game by simulating drag and drop with existing files"""
+        result = self.logic.refresh_game_from_data_folder(self.app_id, self.game_name)
+        self.refresh_completed.emit(result)
+
+
 class InstalledGameWidget(GradientFrame):
     """Widget to display a single installed game with expandable depot details"""
     
     uninstall_requested = Signal(str, str)  # app_id, game_name
+    refresh_requested = Signal(str, str)  # app_id, game_name
     expansion_requested = Signal(object)  # self
     
     def __init__(self, game_data, parent=None):
@@ -462,6 +480,35 @@ class InstalledGameWidget(GradientFrame):
         bottom_layout.addWidget(appid_label)
         
         bottom_layout.addStretch()
+        
+        # Refresh button
+        refresh_button = AnimatedButton("🔄 Refresh")
+        refresh_button.setStyleSheet(f"""
+            QPushButton {{
+                background: {Theme.GOLD_PRIMARY};
+                color: {Theme.TEXT_PRIMARY};
+                border: none;
+                border-radius: 6px;
+                padding: 8px 16px;
+                font-weight: bold;
+                font-size: 12px;
+                min-width: 100px;
+                outline: none;
+            }}
+            QPushButton:hover {{
+                background: {Theme.GOLD_SECONDARY};
+                border: 1px solid rgba(255, 255, 255, 0.2);
+            }}
+            QPushButton:focus {{
+                background: {Theme.GOLD_SECONDARY};
+                border: 2px solid {Theme.GOLD_PRIMARY};
+            }}
+            QPushButton:pressed {{
+                background: #b8860b;
+            }}
+        """)
+        refresh_button.clicked.connect(self.request_refresh)
+        bottom_layout.addWidget(refresh_button)
         
         # Uninstall button
         uninstall_button = AnimatedButton("Uninstall")
@@ -596,6 +643,13 @@ class InstalledGameWidget(GradientFrame):
     def request_uninstall(self):
         """Request uninstallation of this game"""
         self.uninstall_requested.emit(
+            str(self.game_data['app_id']), 
+            self.game_data['game_name']
+        )
+    
+    def request_refresh(self):
+        """Request refresh/reinstallation of this game"""
+        self.refresh_requested.emit(
             str(self.game_data['app_id']), 
             self.game_data['game_name']
         )
@@ -898,6 +952,7 @@ class InstalledGamesDialog(QDialog):
         for game in games:
             game_widget = InstalledGameWidget(game)
             game_widget.uninstall_requested.connect(self.uninstall_game)
+            game_widget.refresh_requested.connect(self.refresh_game)
             game_widget.expansion_requested.connect(self.handle_expansion_request)
             game_widget.set_parent_dialog(self)
             self.game_widgets.append(game_widget)
@@ -956,6 +1011,39 @@ class InstalledGamesDialog(QDialog):
             QTimer.singleShot(1000, self.load_games)
         else:
             self.status_label.setText(f"Failed to uninstall {game_name}: {result['error']}")
+            self.status_label.setStyleSheet(f"color: {Theme.ACCENT_RED}; font-size: 14px;")
+    
+    def refresh_game(self, app_id, game_name):
+        """Refresh a specific game by simulating drag and drop"""
+        # Start refresh process
+        self.status_label.setText(f"Refreshing {game_name}...")
+        self.status_label.setStyleSheet(f"color: {Theme.ACCENT_ORANGE}; font-size: 14px;")
+        
+        # Disable refresh button during refresh
+        self.refresh_button.setEnabled(False)
+        self.refresh_button.setText("⏳ Refreshing...")
+        
+        # Start refresh in worker thread
+        self.refresh_worker = RefreshWorker(self.logic, app_id, game_name)
+        self.refresh_worker.refresh_completed.connect(
+            lambda result: self.on_refresh_completed(result, game_name)
+        )
+        self.refresh_worker.start()
+    
+    def on_refresh_completed(self, result, game_name):
+        """Handle refresh completion"""
+        # Re-enable refresh button
+        self.refresh_button.setEnabled(True)
+        self.refresh_button.setText("🔄 Refresh")
+        
+        if result['success']:
+            self.status_label.setText(f"Successfully refreshed {game_name}")
+            self.status_label.setStyleSheet(f"color: {Theme.ACCENT_GREEN}; font-size: 14px;")
+            
+            # Reload games list
+            QTimer.singleShot(1000, self.load_games)
+        else:
+            self.status_label.setText(f"Failed to refresh {game_name}: {result['error']}")
             self.status_label.setStyleSheet(f"color: {Theme.ACCENT_RED}; font-size: 14px;")
 
 
