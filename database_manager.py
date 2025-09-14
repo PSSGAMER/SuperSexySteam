@@ -59,11 +59,12 @@ class GameDatabaseManager:
                 logger.debug("Creating depots table")
                 cursor.execute('''
                     CREATE TABLE IF NOT EXISTS depots (
-                        depot_id TEXT PRIMARY KEY,
+                        depot_id TEXT NOT NULL,
                         app_id TEXT NOT NULL,
                         decryption_key TEXT,
                         depot_name TEXT DEFAULT 'No Name',
                         date_added TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        PRIMARY KEY (depot_id, app_id),
                         FOREIGN KEY (app_id) REFERENCES appids (app_id) ON DELETE CASCADE
                     )
                 ''')
@@ -250,7 +251,7 @@ class GameDatabaseManager:
                     
                     if depot_id:
                         cursor.execute('''
-                            INSERT INTO depots (depot_id, app_id, decryption_key, depot_name)
+                            INSERT OR REPLACE INTO depots (depot_id, app_id, decryption_key, depot_name)
                             VALUES (?, ?, ?, ?)
                         ''', (depot_id, app_id, decryption_key, depot_name))
                         depot_count += 1
