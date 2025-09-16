@@ -41,8 +41,6 @@
 2. **Extract** the zip file to any location
 3. **Run the installer**: `install.bat` (requires administrator privileges)
 
-> **DO NOT modify config.ini after you have installed any game**
-
 ### 💻 Running From Source
 
 <details>
