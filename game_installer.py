@@ -213,21 +213,27 @@ class GameInstaller:
             
             # Step 5: Update GreenLuma
             if self.is_greenluma_path_valid:
-                try:
-                    logger.debug(f"Updating GreenLuma for AppID {app_id}")
-                    greenluma_result = process_single_appid_for_greenluma(str(self.greenluma_path), app_id, depots)
-                    if greenluma_result['success']:
-                        result['stats']['greenluma_updated'] = True
-                        logger.info(f"GreenLuma updated successfully for AppID {app_id}")
-                    else:
-                        warning_msg = f"GreenLuma update warnings: {greenluma_result.get('errors', [])}"
+                # Check if GreenLuma is disabled in config
+                disable_greenluma = self.config.getboolean('Settings', 'disable_greenluma', fallback=False)
+                if disable_greenluma:
+                    logger.info(f"GreenLuma is disabled in config, skipping GreenLuma operations for AppID {app_id}")
+                    result['stats']['greenluma_skipped'] = True
+                else:
+                    try:
+                        logger.debug(f"Updating GreenLuma for AppID {app_id}")
+                        greenluma_result = process_single_appid_for_greenluma(str(self.greenluma_path), app_id, depots)
+                        if greenluma_result['success']:
+                            result['stats']['greenluma_updated'] = True
+                            logger.info(f"GreenLuma updated successfully for AppID {app_id}")
+                        else:
+                            warning_msg = f"GreenLuma update warnings: {greenluma_result.get('errors', [])}"
+                            logger.warning(warning_msg)
+                            result['warnings'].extend(greenluma_result.get('errors', []))
+                    except Exception as e:
+                        warning_msg = f"GreenLuma update failed: {e}"
                         logger.warning(warning_msg)
-                        result['warnings'].extend(greenluma_result.get('errors', []))
-                except Exception as e:
-                    warning_msg = f"GreenLuma update failed: {e}"
-                    logger.warning(warning_msg)
-                    logger.debug("GreenLuma update exception:", exc_info=True)
-                    result['warnings'].append(warning_msg)
+                        logger.debug("GreenLuma update exception:", exc_info=True)
+                        result['warnings'].append(warning_msg)
             else:
                 warning_msg = "Invalid GreenLuma path, skipping GreenLuma update"
                 logger.warning(warning_msg)
@@ -235,30 +241,36 @@ class GameInstaller:
             
             # Step 6: Update config.vdf
             if self.is_steam_path_valid:
-                try:
-                    config_vdf_path = self.steam_path / 'config' / 'config.vdf'
-                    logger.debug(f"Updating config.vdf at: {config_vdf_path}")
-                    
-                    # Only add depots that have decryption keys
-                    depots_with_keys = [d for d in depots if 'depot_key' in d]
-                    logger.debug(f"Found {len(depots_with_keys)} depots with keys out of {len(depots)} total")
-                    
-                    if depots_with_keys:
-                        vdf_success = add_depots_to_config_vdf(str(config_vdf_path), depots_with_keys)
-                        if vdf_success:
-                            result['stats']['config_vdf_updated'] = True
-                            logger.info(f"Config.vdf updated with {len(depots_with_keys)} depot keys")
+                # Check if VDF parsing is disabled in config
+                disable_vdf_parsing = self.config.getboolean('Settings', 'disable_vdf_parsing', fallback=False)
+                if disable_vdf_parsing:
+                    logger.info(f"VDF parsing is disabled in config, skipping config.vdf update for AppID {app_id}")
+                    result['stats']['vdf_parsing_skipped'] = True
+                else:
+                    try:
+                        config_vdf_path = self.steam_path / 'config' / 'config.vdf'
+                        logger.debug(f"Updating config.vdf at: {config_vdf_path}")
+                        
+                        # Only add depots that have decryption keys
+                        depots_with_keys = [d for d in depots if 'depot_key' in d]
+                        logger.debug(f"Found {len(depots_with_keys)} depots with keys out of {len(depots)} total")
+                        
+                        if depots_with_keys:
+                            vdf_success = add_depots_to_config_vdf(str(config_vdf_path), depots_with_keys)
+                            if vdf_success:
+                                result['stats']['config_vdf_updated'] = True
+                                logger.info(f"Config.vdf updated with {len(depots_with_keys)} depot keys")
+                            else:
+                                warning_msg = "Failed to update config.vdf"
+                                logger.warning(warning_msg)
+                                result['warnings'].append(warning_msg)
                         else:
-                            warning_msg = "Failed to update config.vdf"
-                            logger.warning(warning_msg)
-                            result['warnings'].append(warning_msg)
-                    else:
-                        logger.info(f"No depot keys to add to config.vdf for AppID {app_id}")
-                except Exception as e:
-                    warning_msg = f"Config.vdf update failed: {e}"
-                    logger.warning(warning_msg)
-                    logger.debug("Config.vdf update exception:", exc_info=True)
-                    result['warnings'].append(warning_msg)
+                            logger.info(f"No depot keys to add to config.vdf for AppID {app_id}")
+                    except Exception as e:
+                        warning_msg = f"Config.vdf update failed: {e}"
+                        logger.warning(warning_msg)
+                        logger.debug("Config.vdf update exception:", exc_info=True)
+                        result['warnings'].append(warning_msg)
             else:
                 warning_msg = "Invalid Steam path, skipping config.vdf update"
                 logger.warning(warning_msg)
@@ -266,19 +278,25 @@ class GameInstaller:
             
             # Step 7: Copy manifest files to depot cache
             if self.is_steam_path_valid:
-                try:
-                    logger.debug(f"Copying manifest files to depot cache for AppID {app_id}")
-                    manifest_stats = copy_manifests_for_appid(str(self.steam_path), app_id, data_folder)
-                    result['stats']['manifests_copied'] = manifest_stats.get('copied_count', 0)
-                    if manifest_stats.get('copied_count', 0) > 0:
-                        logger.info(f"Copied {manifest_stats['copied_count']} manifest files to depot cache")
-                    else:
-                        logger.info(f"No manifest files found to copy for AppID {app_id}")
-                except Exception as e:
-                    warning_msg = f"Depot cache update failed: {e}"
-                    logger.warning(warning_msg)
-                    logger.debug("Depot cache update exception:", exc_info=True)
-                    result['warnings'].append(warning_msg)
+                # Check if depot cache manager is disabled in config
+                disable_depotcache_manager = self.config.getboolean('Settings', 'disable_depotcache_manager', fallback=False)
+                if disable_depotcache_manager:
+                    logger.info(f"Depot cache manager is disabled in config, skipping depot cache operations for AppID {app_id}")
+                    result['stats']['depotcache_manager_skipped'] = True
+                else:
+                    try:
+                        logger.debug(f"Copying manifest files to depot cache for AppID {app_id}")
+                        manifest_stats = copy_manifests_for_appid(str(self.steam_path), app_id, data_folder)
+                        result['stats']['manifests_copied'] = manifest_stats.get('copied_count', 0)
+                        if manifest_stats.get('copied_count', 0) > 0:
+                            logger.info(f"Copied {manifest_stats['copied_count']} manifest files to depot cache")
+                        else:
+                            logger.info(f"No manifest files found to copy for AppID {app_id}")
+                    except Exception as e:
+                        warning_msg = f"Depot cache update failed: {e}"
+                        logger.warning(warning_msg)
+                        logger.debug("Depot cache update exception:", exc_info=True)
+                        result['warnings'].append(warning_msg)
             
             # Step 8: Generate ACF file
             if self.is_steam_path_valid:
@@ -306,32 +324,38 @@ class GameInstaller:
             
             # Step 9: Copy files to Steam directories (final step)
             if self.is_steam_path_valid:
-                try:
-                    # Copy manifest files to Steam's depotcache
-                    logger.debug(f"Copying manifest files to Steam depotcache for AppID {app_id}")
-                    manifest_result = copy_manifests_to_depotcache(str(self.steam_path), app_id, data_folder)
-                    if manifest_result['success']:
-                        result['stats']['steam_manifests_copied'] = manifest_result.get('copied_count', 0)
-                        logger.info(f"Copied {manifest_result['copied_count']} manifest files to Steam depotcache")
-                    else:
-                        if manifest_result['errors']:
-                            result['warnings'].extend(manifest_result['errors'])
-                        
-                    # Copy lua file to Steam's stplug-in
-                    logger.debug(f"Copying lua file to Steam stplug-in for AppID {app_id}")
-                    lua_result = copy_lua_to_stplug_in(str(self.steam_path), app_id, data_folder)
-                    if lua_result['success']:
-                        result['stats']['steam_lua_copied'] = True
-                        logger.info(f"Copied lua file to Steam stplug-in: {lua_result['copied_file']}")
-                    else:
-                        if lua_result['errors']:
-                            result['warnings'].extend(lua_result['errors'])
+                # Check if steamtools is disabled in config
+                disable_steamtools = self.config.getboolean('Settings', 'disable_steamtools', fallback=True)
+                if disable_steamtools:
+                    logger.info(f"Steamtools is disabled in config, skipping Steam file operations for AppID {app_id}")
+                    result['stats']['steamtools_skipped'] = True
+                else:
+                    try:
+                        # Copy manifest files to Steam's depotcache
+                        logger.debug(f"Copying manifest files to Steam depotcache for AppID {app_id}")
+                        manifest_result = copy_manifests_to_depotcache(str(self.steam_path), app_id, data_folder)
+                        if manifest_result['success']:
+                            result['stats']['steam_manifests_copied'] = manifest_result.get('copied_count', 0)
+                            logger.info(f"Copied {manifest_result['copied_count']} manifest files to Steam depotcache")
+                        else:
+                            if manifest_result['errors']:
+                                result['warnings'].extend(manifest_result['errors'])
                             
-                except Exception as e:
-                    warning_msg = f"Steam file copying failed: {e}"
-                    logger.warning(warning_msg)
-                    logger.debug("Steam file copying exception:", exc_info=True)
-                    result['warnings'].append(warning_msg)
+                        # Copy lua file to Steam's stplug-in
+                        logger.debug(f"Copying lua file to Steam stplug-in for AppID {app_id}")
+                        lua_result = copy_lua_to_stplug_in(str(self.steam_path), app_id, data_folder)
+                        if lua_result['success']:
+                            result['stats']['steam_lua_copied'] = True
+                            logger.info(f"Copied lua file to Steam stplug-in: {lua_result['copied_file']}")
+                        else:
+                            if lua_result['errors']:
+                                result['warnings'].extend(lua_result['errors'])
+                                
+                    except Exception as e:
+                        warning_msg = f"Steam file copying failed: {e}"
+                        logger.warning(warning_msg)
+                        logger.debug("Steam file copying exception:", exc_info=True)
+                        result['warnings'].append(warning_msg)
             
             result['success'] = True
             logger.info(f"Installation continuation completed successfully for AppID {app_id}")

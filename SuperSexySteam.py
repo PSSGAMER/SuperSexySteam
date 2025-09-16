@@ -1004,7 +1004,7 @@ class InstalledGamesDialog(QDialog):
         self.refresh_button.setText("Refresh")
         
         if result['success']:
-            self.status_label.setText(f"Successfully uninstalled {game_name}")
+            self.status_label.setText(f"✅ Successfully uninstalled {game_name}!")
             self.status_label.setStyleSheet(f"color: {Theme.ACCENT_GREEN}; font-size: 14px;")
             
             # Reload games list
@@ -1037,7 +1037,7 @@ class InstalledGamesDialog(QDialog):
         self.refresh_button.setText("Refresh")
         
         if result['success']:
-            self.status_label.setText(f"Successfully refreshed {game_name}")
+            self.status_label.setText(f"✅ Successfully refreshed {game_name}!")
             self.status_label.setStyleSheet(f"color: {Theme.ACCENT_GREEN}; font-size: 14px;")
             
             # Reload games list
@@ -2947,22 +2947,8 @@ class MainInterface(QWidget):
         elif result['success']:
             action_verb = result['action_verb']
             app_id = result['app_id']
-            stats = result['stats']
             
-            # Build comprehensive success message
-            success_parts = [f"{stats['depots_processed']} depots"]
-            
-            if stats.get('manifests_copied', 0) > 0:
-                success_parts.append(f"{stats['manifests_copied']} manifests")
-                
-            if stats.get('steam_manifests_copied', 0) > 0:
-                success_parts.append(f"{stats['steam_manifests_copied']} Steam manifests")
-                
-            if stats.get('steam_lua_copied', False):
-                success_parts.append("lua file copied")
-            
-            success_details = ", ".join(success_parts)
-            success_msg = f"{action_verb} AppID {app_id} successfully! ({success_details})"
+            success_msg = f"✅ Successfully {action_verb.lower()} AppID {app_id}!"
             self.status_bar.update_status(success_msg, "success")
             
         else:
@@ -3020,7 +3006,7 @@ class MainInterface(QWidget):
                     
                     if uninstall_result.get('success', False):
                         logger.info(f"Successfully cleaned up cancelled installation for AppID {app_id}")
-                        self.status_bar.update_status(f"Installation cancelled and cleaned up for AppID {app_id}", "success")
+                        self.status_bar.update_status(f"✅ Successfully cancelled and cleaned up installation for AppID {app_id}!", "success")
                         
                         # Refresh the installed games view to remove it from the list
                         self.installed_games_dialog.load_games() if hasattr(self, 'installed_games_dialog') else None
@@ -3042,7 +3028,7 @@ class MainInterface(QWidget):
     def on_depot_deleted(self, app_id, depot_id):
         """Handle depot deletion notification"""
         logger.info(f"Depot {depot_id} was deleted from AppID {app_id}")
-        self.status_bar.update_status(f"Depot {depot_id} removed from AppID {app_id}", "success")
+        self.status_bar.update_status(f"✅ Successfully removed depot {depot_id} from AppID {app_id}!", "success")
     
     def on_installation_completed(self, result):
         """Handle installation completion from depot selection dialog"""
@@ -3059,21 +3045,7 @@ class MainInterface(QWidget):
                 logger.info(f"Installation continuing for AppID {app_id}")
             elif success:
                 # Installation completed successfully
-                stats = result.get('stats', {})
-                # Build comprehensive success message
-                success_parts = [f"{stats.get('depots_processed', 0)} depots"]
-                
-                if stats.get('manifests_copied', 0) > 0:
-                    success_parts.append(f"{stats['manifests_copied']} manifests")
-                    
-                if stats.get('steam_manifests_copied', 0) > 0:
-                    success_parts.append(f"{stats['steam_manifests_copied']} Steam manifests")
-                    
-                if stats.get('steam_lua_copied', False):
-                    success_parts.append("lua file copied")
-                
-                success_details = ", ".join(success_parts)
-                success_msg = f"Installation completed for AppID {app_id}! ({success_details})"
+                success_msg = f"✅ Successfully installed AppID {app_id}!"
                 self.status_bar.update_status(success_msg, "success")
                 logger.info(f"Successfully completed installation for AppID {app_id}")
             else:
@@ -3093,7 +3065,7 @@ class MainInterface(QWidget):
         result = self.logic.launch_steam()
         
         if result['success']:
-            final_message = result['messages'][-1] if result['messages'] else "Steam launched successfully! 🚀"
+            final_message = result['messages'][-1] if result['messages'] else "✅ Successfully launched Steam!"
             self.status_bar.update_status(final_message, "success")
         else:
             error_msg = '; '.join(result['errors']) if result['errors'] else "Failed to launch Steam"
@@ -3106,7 +3078,7 @@ class MainInterface(QWidget):
         result = self.logic.fix_steam_offline()
         
         if result['success']:
-            final_message = result['messages'][-1] if result['messages'] else "Steam offline mode fixed successfully! ✅"
+            final_message = result['messages'][-1] if result['messages'] else "✅ Successfully fixed Steam offline mode!"
             self.status_bar.update_status(final_message, "success")
         else:
             error_msg = '; '.join(result['errors']) if result['errors'] else "Failed to fix Steam offline mode"
@@ -3132,7 +3104,7 @@ class MainInterface(QWidget):
             result = self.logic.uninstall_game(app_id)
             
             if result['success']:
-                self.status_bar.update_status(f"AppID {result['app_id']} uninstalled! {result['summary']}", "success")
+                self.status_bar.update_status(f"✅ Successfully uninstalled AppID {result['app_id']}! {result['summary']}", "success")
             else:
                 self.status_bar.update_status(f"Uninstallation failed: {result['error']}", "error")
                 
@@ -3162,7 +3134,7 @@ class MainInterface(QWidget):
         result = self.logic.clear_all_application_data()
         
         if result['success']:
-            self.status_bar.update_status(f"Data cleared! {result['summary']}", "success")
+            self.status_bar.update_status(f"✅ Successfully cleared data! {result['summary']}", "success")
             # Close the application after successfully clearing data
             QApplication.instance().quit()
         else:
@@ -3268,7 +3240,7 @@ class MainInterface(QWidget):
                 achievement_thread.daemon = True
                 achievement_thread.start()
                 
-                self.status_bar.update_status("Achievements script started in console window", "success")
+                self.status_bar.update_status("✅ Successfully started achievements script in console window!", "success")
                 logger.info("Achievements script started in separate thread with console")
                 
             else:
@@ -3289,7 +3261,7 @@ class MainInterface(QWidget):
                     creationflags=subprocess.CREATE_NEW_CONSOLE if os.name == 'nt' else 0
                 )
                 
-                self.status_bar.update_status("Achievements script launched in new console window", "success")
+                self.status_bar.update_status("✅ Successfully launched achievements script in new console window!", "success")
                 
         except Exception as e:
             logger.error(f"Failed to run achievements script: {e}")

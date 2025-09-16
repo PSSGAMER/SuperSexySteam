@@ -102,82 +102,113 @@ def clear_all_data(config) -> Dict[str, any]:
         
         # Step 3: Clear Steam config.vdf depot keys
         if steam_path:
-            try:
-                config_vdf_path = steam_path / 'config' / 'config.vdf'
-                if config_vdf_path.exists():
-                    # Get existing depot keys to see what we're removing
-                    existing_keys = get_existing_depot_keys(str(config_vdf_path))
-                    
-                    # Remove all depot keys that belong to tracked AppIDs
-                    depots_to_remove = [d for d in all_depots if 'depot_key' in d]
-                    if depots_to_remove:
-                        if remove_depots_from_config_vdf(str(config_vdf_path), depots_to_remove):
-                            result['stats']['depot_keys_removed'] = len(depots_to_remove)
-                            logger.info(f"Removed {len(depots_to_remove)} depot keys from config.vdf")
+            # Check if VDF parsing is disabled in config
+            disable_vdf_parsing = config.getboolean('Settings', 'disable_vdf_parsing', fallback=False)
+            if disable_vdf_parsing:
+                logger.info("VDF parsing is disabled in config, skipping config.vdf cleanup")
+                result['stats']['vdf_parsing_skipped'] = True
+            else:
+                try:
+                    config_vdf_path = steam_path / 'config' / 'config.vdf'
+                    if config_vdf_path.exists():
+                        # Get existing depot keys to see what we're removing
+                        existing_keys = get_existing_depot_keys(str(config_vdf_path))
+                        
+                        # Remove all depot keys that belong to tracked AppIDs
+                        depots_to_remove = [d for d in all_depots if 'depot_key' in d]
+                        if depots_to_remove:
+                            if remove_depots_from_config_vdf(str(config_vdf_path), depots_to_remove):
+                                result['stats']['depot_keys_removed'] = len(depots_to_remove)
+                                logger.info(f"Removed {len(depots_to_remove)} depot keys from config.vdf")
+                            else:
+                                result['warnings'].append("Failed to remove depot keys from config.vdf")
                         else:
-                            result['warnings'].append("Failed to remove depot keys from config.vdf")
-                    else:
-                        logger.info("No depot keys to remove from config.vdf")
-            except Exception as e:
-                result['warnings'].append(f"Config.vdf cleanup failed: {e}")
-                logger.warning(f"Config.vdf cleanup failed: {e}")
+                            logger.info("No depot keys to remove from config.vdf")
+                except Exception as e:
+                    result['warnings'].append(f"Config.vdf cleanup failed: {e}")
+                    logger.warning(f"Config.vdf cleanup failed: {e}")
         
         # Step 4: Clear all depot cache files
         if steam_path:
-            try:
-                depot_stats = clear_all_depot_cache(str(steam_path))
-                result['stats']['depotcache_files_removed'] = depot_stats.get('removed_count', 0)
-                logger.info(f"Removed {depot_stats['removed_count']} manifest files from depot cache")
-            except Exception as e:
-                result['warnings'].append(f"Depot cache cleanup failed: {e}")
-                logger.warning(f"Depot cache cleanup failed: {e}")
+            # Check if depot cache manager is disabled in config
+            disable_depotcache_manager = config.getboolean('Settings', 'disable_depotcache_manager', fallback=False)
+            if disable_depotcache_manager:
+                logger.info("Depot cache manager is disabled in config, skipping depot cache cleanup")
+                result['stats']['depotcache_manager_skipped'] = True
+            else:
+                try:
+                    depot_stats = clear_all_depot_cache(str(steam_path))
+                    result['stats']['depotcache_files_removed'] = depot_stats.get('removed_count', 0)
+                    logger.info(f"Removed {depot_stats['removed_count']} manifest files from depot cache")
+                except Exception as e:
+                    result['warnings'].append(f"Depot cache cleanup failed: {e}")
+                    logger.warning(f"Depot cache cleanup failed: {e}")
         
         # Step 4.5: Clear all manifest files from Steam's depotcache directory
         if steam_path:
-            try:
-                steam_manifest_result = clear_all_manifests_from_depotcache(str(steam_path))
-                if steam_manifest_result['success']:
-                    result['stats']['steam_manifests_removed'] = steam_manifest_result.get('removed_count', 0)
-                    if steam_manifest_result.get('removed_count', 0) > 0:
-                        logger.info(f"Removed {steam_manifest_result['removed_count']} manifest files from Steam depotcache")
-                else:
-                    if steam_manifest_result.get('errors'):
-                        result['warnings'].extend(steam_manifest_result['errors'])
-                    if steam_manifest_result.get('warnings'):
-                        result['warnings'].extend(steam_manifest_result['warnings'])
-            except Exception as e:
-                result['warnings'].append(f"Steam depotcache cleanup failed: {e}")
-                logger.warning(f"Steam depotcache cleanup failed: {e}")
+            # Check if steamtools is disabled in config
+            disable_steamtools = config.getboolean('Settings', 'disable_steamtools', fallback=True)
+            if disable_steamtools:
+                logger.info("Steamtools is disabled in config, skipping Steam depotcache cleanup")
+                result['stats']['steamtools_skipped'] = True
+            else:
+                try:
+                    steam_manifest_result = clear_all_manifests_from_depotcache(str(steam_path))
+                    if steam_manifest_result['success']:
+                        result['stats']['steam_manifests_removed'] = steam_manifest_result.get('removed_count', 0)
+                        if steam_manifest_result.get('removed_count', 0) > 0:
+                            logger.info(f"Removed {steam_manifest_result['removed_count']} manifest files from Steam depotcache")
+                    else:
+                        if steam_manifest_result.get('errors'):
+                            result['warnings'].extend(steam_manifest_result['errors'])
+                        if steam_manifest_result.get('warnings'):
+                            result['warnings'].extend(steam_manifest_result['warnings'])
+                except Exception as e:
+                    result['warnings'].append(f"Steam depotcache cleanup failed: {e}")
+                    logger.warning(f"Steam depotcache cleanup failed: {e}")
         
         # Step 4.6: Clear all lua files from Steam's stplug-in directory
         if steam_path:
-            try:
-                steam_lua_result = clear_all_lua_from_stplug_in(str(steam_path))
-                if steam_lua_result['success']:
-                    result['stats']['steam_lua_removed'] = steam_lua_result.get('removed_count', 0)
-                    if steam_lua_result.get('removed_count', 0) > 0:
-                        logger.info(f"Removed {steam_lua_result['removed_count']} lua files from Steam stplug-in")
-                else:
-                    if steam_lua_result.get('errors'):
-                        result['warnings'].extend(steam_lua_result['errors'])
-                    if steam_lua_result.get('warnings'):
-                        result['warnings'].extend(steam_lua_result['warnings'])
-            except Exception as e:
-                result['warnings'].append(f"Steam stplug-in cleanup failed: {e}")
-                logger.warning(f"Steam stplug-in cleanup failed: {e}")
+            # Check if steamtools is disabled in config
+            disable_steamtools = config.getboolean('Settings', 'disable_steamtools', fallback=True)
+            if disable_steamtools:
+                logger.info("Steamtools is disabled in config, skipping Steam stplug-in cleanup")
+                if 'steamtools_skipped' not in result['stats']:
+                    result['stats']['steamtools_skipped'] = True
+            else:
+                try:
+                    steam_lua_result = clear_all_lua_from_stplug_in(str(steam_path))
+                    if steam_lua_result['success']:
+                        result['stats']['steam_lua_removed'] = steam_lua_result.get('removed_count', 0)
+                        if steam_lua_result.get('removed_count', 0) > 0:
+                            logger.info(f"Removed {steam_lua_result['removed_count']} lua files from Steam stplug-in")
+                    else:
+                        if steam_lua_result.get('errors'):
+                            result['warnings'].extend(steam_lua_result['errors'])
+                        if steam_lua_result.get('warnings'):
+                            result['warnings'].extend(steam_lua_result['warnings'])
+                except Exception as e:
+                    result['warnings'].append(f"Steam stplug-in cleanup failed: {e}")
+                    logger.warning(f"Steam stplug-in cleanup failed: {e}")
         
         # Step 5: Clear GreenLuma AppList
         if greenluma_path:
-            try:
-                removed_count = clear_greenluma_applist(str(greenluma_path))
-                if removed_count >= 0:
-                    result['stats']['greenluma_files_removed'] = removed_count
-                    logger.info(f"Removed {removed_count} files from GreenLuma AppList")
-                else:
-                    result['warnings'].append("Failed to clear GreenLuma AppList")
-            except Exception as e:
-                result['warnings'].append(f"GreenLuma cleanup failed: {e}")
-                logger.warning(f"GreenLuma cleanup failed: {e}")
+            # Check if GreenLuma is disabled in config
+            disable_greenluma = config.getboolean('Settings', 'disable_greenluma', fallback=False)
+            if disable_greenluma:
+                logger.info("GreenLuma is disabled in config, skipping GreenLuma AppList cleanup")
+                result['stats']['greenluma_skipped'] = True
+            else:
+                try:
+                    removed_count = clear_greenluma_applist(str(greenluma_path))
+                    if removed_count >= 0:
+                        result['stats']['greenluma_files_removed'] = removed_count
+                        logger.info(f"Removed {removed_count} files from GreenLuma AppList")
+                    else:
+                        result['warnings'].append("Failed to clear GreenLuma AppList")
+                except Exception as e:
+                    result['warnings'].append(f"GreenLuma cleanup failed: {e}")
+                    logger.warning(f"GreenLuma cleanup failed: {e}")
         
         # Step 6: Clear data folder
         try:
@@ -306,67 +337,92 @@ def uninstall_specific_appid(config, app_id: str) -> Dict[str, any]:
         
         # Step 3: Remove depot keys from config.vdf
         if steam_path:
-            try:
-                config_vdf_path = steam_path / 'config' / 'config.vdf'
-                depots_with_keys = [d for d in depots if 'depot_key' in d]
-                if depots_with_keys:
-                    if remove_depots_from_config_vdf(str(config_vdf_path), depots_with_keys):
-                        result['stats']['depot_keys_removed'] = len(depots_with_keys)
-                        logger.info(f"Removed {len(depots_with_keys)} depot keys from config.vdf")
+            # Check if VDF parsing is disabled in config
+            disable_vdf_parsing = config.getboolean('Settings', 'disable_vdf_parsing', fallback=False)
+            if disable_vdf_parsing:
+                logger.info(f"VDF parsing is disabled in config, skipping config.vdf update for AppID {app_id}")
+                result['stats']['vdf_parsing_skipped'] = True
+            else:
+                try:
+                    config_vdf_path = steam_path / 'config' / 'config.vdf'
+                    depots_with_keys = [d for d in depots if 'depot_key' in d]
+                    if depots_with_keys:
+                        if remove_depots_from_config_vdf(str(config_vdf_path), depots_with_keys):
+                            result['stats']['depot_keys_removed'] = len(depots_with_keys)
+                            logger.info(f"Removed {len(depots_with_keys)} depot keys from config.vdf")
+                        else:
+                            result['warnings'].append("Failed to update config.vdf")
                     else:
-                        result['warnings'].append("Failed to update config.vdf")
-                else:
-                    logger.info("No depot keys to remove from config.vdf")
-            except Exception as e:
-                result['warnings'].append(f"Config.vdf cleanup failed: {e}")
-                logger.warning(f"Config.vdf cleanup failed: {e}")
+                        logger.info("No depot keys to remove from config.vdf")
+                except Exception as e:
+                    result['warnings'].append(f"Config.vdf cleanup failed: {e}")
+                    logger.warning(f"Config.vdf cleanup failed: {e}")
         
         # Step 4: Remove manifest files from depot cache
         if steam_path:
-            try:
-                manifest_stats = remove_manifests_for_appid(str(steam_path), manifest_filenames)
-                result['stats']['manifest_files_removed'] = manifest_stats.get('removed_count', 0)
-                if manifest_stats.get('removed_count', 0) > 0:
-                    logger.info(f"Removed {manifest_stats['removed_count']} manifest files from depot cache")
-            except Exception as e:
-                result['warnings'].append(f"Depot cache cleanup failed: {e}")
-                logger.warning(f"Depot cache cleanup failed: {e}")
+            # Check if depot cache manager is disabled in config
+            disable_depotcache_manager = config.getboolean('Settings', 'disable_depotcache_manager', fallback=False)
+            if disable_depotcache_manager:
+                logger.info(f"Depot cache manager is disabled in config, skipping depot cache cleanup for AppID {app_id}")
+                result['stats']['depotcache_manager_skipped'] = True
+            else:
+                try:
+                    manifest_stats = remove_manifests_for_appid(str(steam_path), manifest_filenames)
+                    result['stats']['manifest_files_removed'] = manifest_stats.get('removed_count', 0)
+                    if manifest_stats.get('removed_count', 0) > 0:
+                        logger.info(f"Removed {manifest_stats['removed_count']} manifest files from depot cache")
+                except Exception as e:
+                    result['warnings'].append(f"Depot cache cleanup failed: {e}")
+                    logger.warning(f"Depot cache cleanup failed: {e}")
         
         # Step 4.5: Remove manifest files from Steam's depotcache directory
         if steam_path:
-            try:
-                steam_manifest_result = remove_manifests_from_depotcache(str(steam_path), app_id)
-                if steam_manifest_result['success']:
-                    result['stats']['steam_manifests_removed'] = steam_manifest_result.get('removed_count', 0)
-                    if steam_manifest_result.get('removed_count', 0) > 0:
-                        logger.info(f"Removed {steam_manifest_result['removed_count']} manifest files from Steam depotcache")
-                else:
-                    if steam_manifest_result.get('errors'):
-                        result['warnings'].extend(steam_manifest_result['errors'])
-                    if steam_manifest_result.get('warnings'):
-                        result['warnings'].extend(steam_manifest_result['warnings'])
-            except Exception as e:
-                result['warnings'].append(f"Steam depotcache cleanup failed: {e}")
-                logger.warning(f"Steam depotcache cleanup failed: {e}")
+            # Check if steamtools is disabled in config
+            disable_steamtools = config.getboolean('Settings', 'disable_steamtools', fallback=True)
+            if disable_steamtools:
+                logger.info(f"Steamtools is disabled in config, skipping Steam depotcache cleanup for AppID {app_id}")
+                result['stats']['steamtools_skipped'] = True
+            else:
+                try:
+                    steam_manifest_result = remove_manifests_from_depotcache(str(steam_path), app_id)
+                    if steam_manifest_result['success']:
+                        result['stats']['steam_manifests_removed'] = steam_manifest_result.get('removed_count', 0)
+                        if steam_manifest_result.get('removed_count', 0) > 0:
+                            logger.info(f"Removed {steam_manifest_result['removed_count']} manifest files from Steam depotcache")
+                    else:
+                        if steam_manifest_result.get('errors'):
+                            result['warnings'].extend(steam_manifest_result['errors'])
+                        if steam_manifest_result.get('warnings'):
+                            result['warnings'].extend(steam_manifest_result['warnings'])
+                except Exception as e:
+                    result['warnings'].append(f"Steam depotcache cleanup failed: {e}")
+                    logger.warning(f"Steam depotcache cleanup failed: {e}")
         
         # Step 4.6: Remove lua file from Steam's stplug-in directory
         if steam_path:
-            try:
-                steam_lua_result = remove_lua_from_stplug_in(str(steam_path), app_id)
-                if steam_lua_result['success']:
-                    if steam_lua_result.get('removed_file'):
-                        result['stats']['steam_lua_removed'] = True
-                        logger.info(f"Removed lua file from Steam stplug-in: {steam_lua_result['removed_file']}")
+            # Check if steamtools is disabled in config
+            disable_steamtools = config.getboolean('Settings', 'disable_steamtools', fallback=True)
+            if disable_steamtools:
+                logger.info(f"Steamtools is disabled in config, skipping Steam stplug-in cleanup for AppID {app_id}")
+                if 'steamtools_skipped' not in result['stats']:
+                    result['stats']['steamtools_skipped'] = True
+            else:
+                try:
+                    steam_lua_result = remove_lua_from_stplug_in(str(steam_path), app_id)
+                    if steam_lua_result['success']:
+                        if steam_lua_result.get('removed_file'):
+                            result['stats']['steam_lua_removed'] = True
+                            logger.info(f"Removed lua file from Steam stplug-in: {steam_lua_result['removed_file']}")
+                        else:
+                            logger.info("No lua file found in Steam stplug-in to remove")
                     else:
-                        logger.info("No lua file found in Steam stplug-in to remove")
-                else:
-                    if steam_lua_result.get('errors'):
-                        result['warnings'].extend(steam_lua_result['errors'])
-                    if steam_lua_result.get('warnings'):
-                        result['warnings'].extend(steam_lua_result['warnings'])
-            except Exception as e:
-                result['warnings'].append(f"Steam stplug-in cleanup failed: {e}")
-                logger.warning(f"Steam stplug-in cleanup failed: {e}")
+                        if steam_lua_result.get('errors'):
+                            result['warnings'].extend(steam_lua_result['errors'])
+                        if steam_lua_result.get('warnings'):
+                            result['warnings'].extend(steam_lua_result['warnings'])
+                except Exception as e:
+                    result['warnings'].append(f"Steam stplug-in cleanup failed: {e}")
+                    logger.warning(f"Steam stplug-in cleanup failed: {e}")
         
         # Step 5: Remove specific AppID folder from data directory
         try:
@@ -385,17 +441,23 @@ def uninstall_specific_appid(config, app_id: str) -> Dict[str, any]:
         
         # Step 6: Remove from GreenLuma
         if greenluma_path:
-            try:
-                greenluma_result = remove_appid_from_greenluma(str(greenluma_path), app_id, depots)
-                if greenluma_result['success']:
-                    total_removed = greenluma_result['stats'].get('appids_removed', 0) + greenluma_result['stats'].get('depots_removed', 0)
-                    result['stats']['greenluma_files_removed'] = total_removed
-                    logger.info(f"Removed {total_removed} entries from GreenLuma AppList")
-                else:
-                    result['warnings'].extend(greenluma_result.get('errors', []))
-            except Exception as e:
-                result['warnings'].append(f"GreenLuma removal failed: {e}")
-                logger.warning(f"GreenLuma removal failed: {e}")
+            # Check if GreenLuma is disabled in config
+            disable_greenluma = config.getboolean('Settings', 'disable_greenluma', fallback=False)
+            if disable_greenluma:
+                logger.info(f"GreenLuma is disabled in config, skipping GreenLuma removal for AppID {app_id}")
+                result['stats']['greenluma_skipped'] = True
+            else:
+                try:
+                    greenluma_result = remove_appid_from_greenluma(str(greenluma_path), app_id, depots)
+                    if greenluma_result['success']:
+                        total_removed = greenluma_result['stats'].get('appids_removed', 0) + greenluma_result['stats'].get('depots_removed', 0)
+                        result['stats']['greenluma_files_removed'] = total_removed
+                        logger.info(f"Removed {total_removed} entries from GreenLuma AppList")
+                    else:
+                        result['warnings'].extend(greenluma_result.get('errors', []))
+                except Exception as e:
+                    result['warnings'].append(f"GreenLuma removal failed: {e}")
+                    logger.warning(f"GreenLuma removal failed: {e}")
         
         # Step 7: Remove from database (do this last)
         try:
