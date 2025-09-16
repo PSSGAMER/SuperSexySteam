@@ -282,21 +282,27 @@ class GameInstaller:
             
             # Step 8: Generate ACF file
             if self.is_steam_path_valid:
-                try:
-                    logger.debug(f"Generating ACF file for AppID {app_id}")
-                    acf_success = generate_acf_for_appid(str(self.steam_path), app_id)
-                    if acf_success:
-                        result['stats']['acf_generated'] = True
-                        logger.info(f"ACF file generated successfully for AppID {app_id}")
-                    else:
-                        warning_msg = "Failed to generate ACF file"
+                # Check if ACF generation is disabled in config
+                disable_acfgen = self.config.getboolean('Settings', 'disable_acfgen', fallback=False)
+                if disable_acfgen:
+                    logger.info(f"ACF generation is disabled in config, skipping for AppID {app_id}")
+                    result['stats']['acf_skipped'] = True
+                else:
+                    try:
+                        logger.debug(f"Generating ACF file for AppID {app_id}")
+                        acf_success = generate_acf_for_appid(str(self.steam_path), app_id)
+                        if acf_success:
+                            result['stats']['acf_generated'] = True
+                            logger.info(f"ACF file generated successfully for AppID {app_id}")
+                        else:
+                            warning_msg = "Failed to generate ACF file"
+                            logger.warning(warning_msg)
+                            result['warnings'].append(warning_msg)
+                    except Exception as e:
+                        warning_msg = f"ACF generation failed: {e}"
                         logger.warning(warning_msg)
+                        logger.debug("ACF generation exception:", exc_info=True)
                         result['warnings'].append(warning_msg)
-                except Exception as e:
-                    warning_msg = f"ACF generation failed: {e}"
-                    logger.warning(warning_msg)
-                    logger.debug("ACF generation exception:", exc_info=True)
-                    result['warnings'].append(warning_msg)
             
             # Step 9: Copy files to Steam directories (final step)
             if self.is_steam_path_valid:
@@ -607,16 +613,22 @@ class GameInstaller:
             
             # Check ACF file
             if self.is_steam_path_valid:
-                logger.debug(f"Checking ACF file for AppID {app_id}")
-                steamapps_path = self.steam_path / 'steamapps'
-                acf_file = steamapps_path / f"appmanifest_{app_id}.acf"
-                if acf_file.exists():
-                    result['components']['acf'] = True
-                    logger.debug("ACF component validation: PASS")
+                # Check if ACF generation is disabled in config
+                disable_acfgen = self.config.getboolean('Settings', 'disable_acfgen', fallback=False)
+                if disable_acfgen:
+                    logger.debug("ACF validation skipped - ACF generation is disabled in config")
+                    result['components']['acf'] = True  # Consider it valid since it's intentionally disabled
                 else:
-                    warning_msg = "ACF file not found"
-                    logger.debug(f"ACF component validation: FAIL - {warning_msg}")
-                    result['warnings'].append(warning_msg)
+                    logger.debug(f"Checking ACF file for AppID {app_id}")
+                    steamapps_path = self.steam_path / 'steamapps'
+                    acf_file = steamapps_path / f"appmanifest_{app_id}.acf"
+                    if acf_file.exists():
+                        result['components']['acf'] = True
+                        logger.debug("ACF component validation: PASS")
+                    else:
+                        warning_msg = "ACF file not found"
+                        logger.debug(f"ACF component validation: FAIL - {warning_msg}")
+                        result['warnings'].append(warning_msg)
             else:
                 logger.debug("Skipping ACF validation - invalid Steam path")
             

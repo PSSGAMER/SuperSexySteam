@@ -1198,6 +1198,9 @@ class SuperSexySteamLogic:
             'steam_path': steam_path, 
             'greenluma_path': str(greenluma_path)
         }
+        config['Settings'] = {
+            'disable_acfgen': '0'
+        }
         
         config_file = Path('config.ini')
         with config_file.open('w') as f:
