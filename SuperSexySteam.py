@@ -2949,7 +2949,20 @@ class MainInterface(QWidget):
             app_id = result['app_id']
             stats = result['stats']
             
-            success_msg = f"{action_verb} AppID {app_id} successfully! ({stats['depots_processed']} depots, {stats['manifests_copied']} manifests)"
+            # Build comprehensive success message
+            success_parts = [f"{stats['depots_processed']} depots"]
+            
+            if stats.get('manifests_copied', 0) > 0:
+                success_parts.append(f"{stats['manifests_copied']} manifests")
+                
+            if stats.get('steam_manifests_copied', 0) > 0:
+                success_parts.append(f"{stats['steam_manifests_copied']} Steam manifests")
+                
+            if stats.get('steam_lua_copied', False):
+                success_parts.append("lua file copied")
+            
+            success_details = ", ".join(success_parts)
+            success_msg = f"{action_verb} AppID {app_id} successfully! ({success_details})"
             self.status_bar.update_status(success_msg, "success")
             
         else:
@@ -3047,7 +3060,20 @@ class MainInterface(QWidget):
             elif success:
                 # Installation completed successfully
                 stats = result.get('stats', {})
-                success_msg = f"Installation completed for AppID {app_id}! ({stats.get('depots_processed', 0)} depots, {stats.get('manifests_copied', 0)} manifests)"
+                # Build comprehensive success message
+                success_parts = [f"{stats.get('depots_processed', 0)} depots"]
+                
+                if stats.get('manifests_copied', 0) > 0:
+                    success_parts.append(f"{stats['manifests_copied']} manifests")
+                    
+                if stats.get('steam_manifests_copied', 0) > 0:
+                    success_parts.append(f"{stats['steam_manifests_copied']} Steam manifests")
+                    
+                if stats.get('steam_lua_copied', False):
+                    success_parts.append("lua file copied")
+                
+                success_details = ", ".join(success_parts)
+                success_msg = f"Installation completed for AppID {app_id}! ({success_details})"
                 self.status_bar.update_status(success_msg, "success")
                 logger.info(f"Successfully completed installation for AppID {app_id}")
             else:

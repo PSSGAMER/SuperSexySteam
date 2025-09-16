@@ -11,6 +11,7 @@ from database_manager import get_database_manager
 from vdf_updater import remove_depots_from_config_vdf, get_existing_depot_keys
 from depot_cache_manager import remove_manifests_for_appid, clear_all_depot_cache
 from greenluma_manager import remove_appid_from_greenluma, clear_greenluma_applist
+from steamtools import remove_manifests_from_depotcache, remove_lua_from_stplug_in, clear_all_manifests_from_depotcache, clear_all_lua_from_stplug_in
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -80,6 +81,8 @@ def clear_all_data(config) -> Dict[str, any]:
             'data_folder_cleared': False,
             'depot_keys_removed': 0,
             'depotcache_files_removed': 0,
+            'steam_manifests_removed': 0,
+            'steam_lua_removed': 0,
             'greenluma_files_removed': 0,
             'config_ini_removed': False,
             'dll_injector_restored': False
@@ -128,6 +131,40 @@ def clear_all_data(config) -> Dict[str, any]:
             except Exception as e:
                 result['warnings'].append(f"Depot cache cleanup failed: {e}")
                 logger.warning(f"Depot cache cleanup failed: {e}")
+        
+        # Step 4.5: Clear all manifest files from Steam's depotcache directory
+        if steam_path:
+            try:
+                steam_manifest_result = clear_all_manifests_from_depotcache(str(steam_path))
+                if steam_manifest_result['success']:
+                    result['stats']['steam_manifests_removed'] = steam_manifest_result.get('removed_count', 0)
+                    if steam_manifest_result.get('removed_count', 0) > 0:
+                        logger.info(f"Removed {steam_manifest_result['removed_count']} manifest files from Steam depotcache")
+                else:
+                    if steam_manifest_result.get('errors'):
+                        result['warnings'].extend(steam_manifest_result['errors'])
+                    if steam_manifest_result.get('warnings'):
+                        result['warnings'].extend(steam_manifest_result['warnings'])
+            except Exception as e:
+                result['warnings'].append(f"Steam depotcache cleanup failed: {e}")
+                logger.warning(f"Steam depotcache cleanup failed: {e}")
+        
+        # Step 4.6: Clear all lua files from Steam's stplug-in directory
+        if steam_path:
+            try:
+                steam_lua_result = clear_all_lua_from_stplug_in(str(steam_path))
+                if steam_lua_result['success']:
+                    result['stats']['steam_lua_removed'] = steam_lua_result.get('removed_count', 0)
+                    if steam_lua_result.get('removed_count', 0) > 0:
+                        logger.info(f"Removed {steam_lua_result['removed_count']} lua files from Steam stplug-in")
+                else:
+                    if steam_lua_result.get('errors'):
+                        result['warnings'].extend(steam_lua_result['errors'])
+                    if steam_lua_result.get('warnings'):
+                        result['warnings'].extend(steam_lua_result['warnings'])
+            except Exception as e:
+                result['warnings'].append(f"Steam stplug-in cleanup failed: {e}")
+                logger.warning(f"Steam stplug-in cleanup failed: {e}")
         
         # Step 5: Clear GreenLuma AppList
         if greenluma_path:
@@ -242,6 +279,8 @@ def uninstall_specific_appid(config, app_id: str) -> Dict[str, any]:
         'stats': {
             'depot_keys_removed': 0,
             'manifest_files_removed': 0,
+            'steam_manifests_removed': 0,
+            'steam_lua_removed': False,
             'data_folder_removed': False,
             'database_entry_removed': False,
             'greenluma_files_removed': 0
@@ -292,6 +331,42 @@ def uninstall_specific_appid(config, app_id: str) -> Dict[str, any]:
             except Exception as e:
                 result['warnings'].append(f"Depot cache cleanup failed: {e}")
                 logger.warning(f"Depot cache cleanup failed: {e}")
+        
+        # Step 4.5: Remove manifest files from Steam's depotcache directory
+        if steam_path:
+            try:
+                steam_manifest_result = remove_manifests_from_depotcache(str(steam_path), app_id)
+                if steam_manifest_result['success']:
+                    result['stats']['steam_manifests_removed'] = steam_manifest_result.get('removed_count', 0)
+                    if steam_manifest_result.get('removed_count', 0) > 0:
+                        logger.info(f"Removed {steam_manifest_result['removed_count']} manifest files from Steam depotcache")
+                else:
+                    if steam_manifest_result.get('errors'):
+                        result['warnings'].extend(steam_manifest_result['errors'])
+                    if steam_manifest_result.get('warnings'):
+                        result['warnings'].extend(steam_manifest_result['warnings'])
+            except Exception as e:
+                result['warnings'].append(f"Steam depotcache cleanup failed: {e}")
+                logger.warning(f"Steam depotcache cleanup failed: {e}")
+        
+        # Step 4.6: Remove lua file from Steam's stplug-in directory
+        if steam_path:
+            try:
+                steam_lua_result = remove_lua_from_stplug_in(str(steam_path), app_id)
+                if steam_lua_result['success']:
+                    if steam_lua_result.get('removed_file'):
+                        result['stats']['steam_lua_removed'] = True
+                        logger.info(f"Removed lua file from Steam stplug-in: {steam_lua_result['removed_file']}")
+                    else:
+                        logger.info("No lua file found in Steam stplug-in to remove")
+                else:
+                    if steam_lua_result.get('errors'):
+                        result['warnings'].extend(steam_lua_result['errors'])
+                    if steam_lua_result.get('warnings'):
+                        result['warnings'].extend(steam_lua_result['warnings'])
+            except Exception as e:
+                result['warnings'].append(f"Steam stplug-in cleanup failed: {e}")
+                logger.warning(f"Steam stplug-in cleanup failed: {e}")
         
         # Step 5: Remove specific AppID folder from data directory
         try:

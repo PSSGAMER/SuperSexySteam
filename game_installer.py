@@ -14,6 +14,7 @@ from vdf_updater import add_depots_to_config_vdf, remove_depots_from_config_vdf
 from depot_cache_manager import copy_manifests_for_appid, remove_manifests_for_appid
 from acfgen import generate_acf_for_appid
 from steam_game_search import get_game_name_by_appid
+from steamtools import copy_manifests_to_depotcache, copy_lua_to_stplug_in
 # Import the centralized uninstaller
 from system_cleaner import uninstall_specific_appid
 
@@ -167,7 +168,7 @@ class GameInstaller:
     def continue_installation(self, app_id: str, data_folder: str) -> Dict[str, any]:
         """
         Continue installation after depot selection popup is handled.
-        This completes steps 5-8 of the installation process.
+        This completes steps 5-9 of the installation process.
         
         Args:
             app_id (str): The Steam AppID being installed
@@ -189,7 +190,9 @@ class GameInstaller:
                 'manifests_tracked': 0,
                 'greenluma_updated': False,
                 'config_vdf_updated': False,
-                'acf_generated': False
+                'acf_generated': False,
+                'steam_manifests_copied': 0,
+                'steam_lua_copied': False
             }
         }
         
@@ -293,6 +296,35 @@ class GameInstaller:
                     warning_msg = f"ACF generation failed: {e}"
                     logger.warning(warning_msg)
                     logger.debug("ACF generation exception:", exc_info=True)
+                    result['warnings'].append(warning_msg)
+            
+            # Step 9: Copy files to Steam directories (final step)
+            if self.is_steam_path_valid:
+                try:
+                    # Copy manifest files to Steam's depotcache
+                    logger.debug(f"Copying manifest files to Steam depotcache for AppID {app_id}")
+                    manifest_result = copy_manifests_to_depotcache(str(self.steam_path), app_id, data_folder)
+                    if manifest_result['success']:
+                        result['stats']['steam_manifests_copied'] = manifest_result.get('copied_count', 0)
+                        logger.info(f"Copied {manifest_result['copied_count']} manifest files to Steam depotcache")
+                    else:
+                        if manifest_result['errors']:
+                            result['warnings'].extend(manifest_result['errors'])
+                        
+                    # Copy lua file to Steam's stplug-in
+                    logger.debug(f"Copying lua file to Steam stplug-in for AppID {app_id}")
+                    lua_result = copy_lua_to_stplug_in(str(self.steam_path), app_id, data_folder)
+                    if lua_result['success']:
+                        result['stats']['steam_lua_copied'] = True
+                        logger.info(f"Copied lua file to Steam stplug-in: {lua_result['copied_file']}")
+                    else:
+                        if lua_result['errors']:
+                            result['warnings'].extend(lua_result['errors'])
+                            
+                except Exception as e:
+                    warning_msg = f"Steam file copying failed: {e}"
+                    logger.warning(warning_msg)
+                    logger.debug("Steam file copying exception:", exc_info=True)
                     result['warnings'].append(warning_msg)
             
             result['success'] = True
