@@ -1456,11 +1456,14 @@ class ConfirmationOverlay(QDialog):
         if hasattr(self, 'exit_animation'):
             self.exit_animation.stop()
             
-        # Ensure the dialog closes
+        # Close the dialog with the appropriate result
         try:
-            self.accept()
+            if self.result_confirmed:
+                super().accept()
+            else:
+                super().reject()
         except Exception:
-            # Fallback to direct close if accept fails
+            # Fallback to direct close if accept/reject fails
             self.close()
             
     def reject(self):
@@ -1471,6 +1474,7 @@ class ConfirmationOverlay(QDialog):
         
     def accept(self):
         """Override accept to ensure proper cleanup"""
+        self.result_confirmed = True
         super().accept()
         
     def on_confirm(self):
