@@ -1199,6 +1199,7 @@ class SuperSexySteamLogic:
             'greenluma_path': str(greenluma_path)
         }
         config['Settings'] = {
+            'portable_install': '0',
             'disable_greenluma': '0',
             'disable_vdf_parsing': '0',
             'disable_depotcache_manager': '0',

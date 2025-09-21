@@ -13,6 +13,8 @@ import configparser
 from pathlib import Path
 from typing import Dict, List, Any, Optional
 
+from steam_manager import get_steam_path_with_fallbacks
+
 # Configure logging for the entire application
 class ColoredFormatter(logging.Formatter):
     """Custom formatter that adds colors to log levels"""
@@ -2613,9 +2615,13 @@ class FirstTimeSetupWidget(QStackedWidget):
         path_layout = QHBoxLayout()
         
         self.steam_path_input = QLineEdit()
-        self.steam_path_input.setPlaceholderText("C:\\Program Files (x86)\\Steam")
+        
+        # Get the detected path
+        detected_steam_path = get_steam_path_with_fallbacks()
+        
+        self.steam_path_input.setPlaceholderText(detected_steam_path)
         self.steam_path_input.setStyleSheet(Theme.get_input_style())
-        self.steam_path_input.setText("C:\\Program Files (x86)\\Steam")  # Default
+        self.steam_path_input.setText(detected_steam_path)  # Use detected path as default
         path_layout.addWidget(self.steam_path_input, 1)
         
         browse_button = AnimatedButton("Browse")
