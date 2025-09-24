@@ -12,9 +12,152 @@ from pathlib import Path
 import logging
 import vdf
 import shutil
+from typing import Optional
 
 # Configure logging
 logger = logging.getLogger(__name__)
+
+
+def get_steam_path_from_registry() -> Optional[str]:
+    """
+    Query the Windows registry to find Steam's installation path.
+    
+    This function attempts to read the Steam InstallPath from the registry,
+    similar to the JavaScript version that uses 'reg query'.
+    
+    Returns:
+        Optional[str]: The Steam installation path if found and valid, None otherwise.
+    """
+    logger.debug("Attempting to detect Steam path from Windows registry")
+    
+    try:
+        # This command queries the registry for Steam's InstallPath value
+        command = 'reg query "HKEY_LOCAL_MACHINE\\SOFTWARE\\WOW6432Node\\Valve\\Steam" /v InstallPath'
+        logger.debug(f"Running registry query command: {command}")
+        
+        # Execute the registry query command
+        result = subprocess.run(command, shell=True, capture_output=True, text=True, timeout=10)
+        
+        if result.returncode != 0:
+            logger.debug(f"Registry query failed with return code {result.returncode}")
+            logger.debug(f"stderr: {result.stderr}")
+            return None
+            
+        stdout = result.stdout
+        logger.debug(f"Registry query output: {stdout}")
+        
+        # The output is messy, so we need to parse it to get just the path
+        # Expected format: "    InstallPath    REG_SZ    C:\Program Files (x86)\Steam"
+        lines = stdout.split('\n')
+        for line in lines:
+            if 'InstallPath' in line and 'REG_SZ' in line:
+                # Split by whitespace and get the path (last part)
+                parts = line.split()
+                if len(parts) >= 3:
+                    # The path is everything after REG_SZ
+                    reg_sz_index = -1
+                    for i, part in enumerate(parts):
+                        if part == 'REG_SZ':
+                            reg_sz_index = i
+                            break
+                    
+                    if reg_sz_index >= 0 and reg_sz_index + 1 < len(parts):
+                        # Join all parts after REG_SZ to handle paths with spaces
+                        steam_path = ' '.join(parts[reg_sz_index + 1:]).strip()
+                        logger.debug(f"Extracted Steam path from registry: {steam_path}")
+                        
+                        # Verify the path actually exists and contains steam.exe using pathlib
+                        steam_path_obj = Path(steam_path)
+                        if steam_path_obj.exists():
+                            steam_exe_path = steam_path_obj / 'steam.exe'
+                            if steam_exe_path.exists():
+                                logger.info(f"Registry found valid Steam installation at: {steam_path}")
+                                return steam_path
+                            else:
+                                logger.warning(f"Registry path exists but steam.exe not found: {steam_exe_path}")
+                        else:
+                            logger.warning(f"Registry path does not exist: {steam_path}")
+        
+        logger.debug("Could not parse Steam path from registry output")
+        return None
+        
+    except subprocess.TimeoutExpired:
+        logger.warning("Registry query timed out")
+        return None
+    except Exception as e:
+        logger.debug(f"Failed to query registry for Steam path: {e}")
+        return None
+
+
+def get_steam_path_with_fallbacks() -> str:
+    """
+    Get Steam installation path using multiple detection methods with fallbacks.
+    
+    Detection order:
+    1. Windows registry query (most reliable)
+    2. Common installation paths (fallbacks)
+    
+    Returns:
+        str: The detected or fallback Steam installation path.
+    """
+    logger.info("Detecting Steam installation path")
+    
+    # Method 1: Try registry detection first
+    registry_path = get_steam_path_from_registry()
+    if registry_path:
+        logger.info(f"Steam path detected from registry: {registry_path}")
+        return registry_path
+    
+    # Method 2: Try common fallback paths using pathlib
+    logger.debug("Registry detection failed, trying common installation paths")
+    fallback_paths = [
+        Path(r"C:\Program Files (x86)\Steam"),
+        Path(r"C:\Program Files\Steam"),
+        Path.home() / "Steam",  # Some users install Steam in their home directory
+    ]
+    
+    for path in fallback_paths:
+        logger.debug(f"Checking fallback path: {path}")
+        if path.exists() and path.is_dir():
+            steam_exe_path = path / 'steam.exe'
+            if steam_exe_path.exists() and steam_exe_path.is_file():
+                logger.info(f"Steam found at fallback path: {path}")
+                return str(path)
+            else:
+                logger.debug(f"Path exists but steam.exe not found: {steam_exe_path}")
+        else:
+            logger.debug(f"Fallback path does not exist: {path}")
+    
+    # Method 3: Ultimate fallback - return the most common path even if it doesn't exist
+    default_path = r"C:\Program Files (x86)\Steam"
+    logger.warning(f"Could not detect Steam installation, using default path: {default_path}")
+    return default_path
+
+
+def is_steam_path_valid(steam_path: str) -> bool:
+    """
+    Validate if a given path is a valid Steam installation using pathlib.
+    
+    Args:
+        steam_path (str): Path to validate as Steam installation.
+        
+    Returns:
+        bool: True if the path contains a valid Steam installation, False otherwise.
+    """
+    if not steam_path:
+        return False
+        
+    try:
+        path = Path(steam_path)
+        if not path.exists() or not path.is_dir():
+            return False
+            
+        steam_exe = path / 'steam.exe'
+        return steam_exe.exists() and steam_exe.is_file()
+        
+    except Exception as e:
+        logger.debug(f"Error validating Steam path '{steam_path}': {e}")
+        return False
 
 def is_steam_running():
     """

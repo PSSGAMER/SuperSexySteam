@@ -498,7 +498,7 @@ class SuperSexySteamLogic:
             
             if launch_result['success']:
                 results['success'] = True
-                results['messages'].append("Steam launched successfully! 🚀")
+                results['messages'].append("✅ Successfully launched Steam!")
                 logger.info("Steam launched successfully via DLLInjector")
             else:
                 error_msg = '; '.join(launch_result['errors'])
@@ -569,7 +569,7 @@ class SuperSexySteamLogic:
             if offline_fix_result['success']:
                 results['success'] = True
                 updated_users = offline_fix_result.get('updated_users', 0)
-                results['messages'].append(f"Steam offline mode fixed successfully! Updated {updated_users} user(s).")
+                results['messages'].append(f"✅ Successfully fixed Steam offline mode! Updated {updated_users} user(s).")
                 logger.info(f"Steam offline mode fixed for {updated_users} user(s)")
             else:
                 error_msg = '; '.join(offline_fix_result['errors'])
@@ -1197,6 +1197,14 @@ class SuperSexySteamLogic:
         config['Paths'] = {
             'steam_path': steam_path, 
             'greenluma_path': str(greenluma_path)
+        }
+        config['Settings'] = {
+            'portable_install': '0',
+            'disable_greenluma': '0',
+            'disable_vdf_parsing': '0',
+            'disable_depotcache_manager': '0',
+            'disable_acfgen': '0',
+            'disable_steamtools': '1'
         }
         
         config_file = Path('config.ini')

@@ -13,6 +13,8 @@ import configparser
 from pathlib import Path
 from typing import Dict, List, Any, Optional
 
+from steam_manager import get_steam_path_with_fallbacks
+
 # Configure logging for the entire application
 class ColoredFormatter(logging.Formatter):
     """Custom formatter that adds colors to log levels"""
@@ -482,7 +484,7 @@ class InstalledGameWidget(GradientFrame):
         bottom_layout.addStretch()
         
         # Refresh button
-        refresh_button = AnimatedButton("Refresh")
+        refresh_button = AnimatedButton("Reinstall")
         refresh_button.setStyleSheet(f"""
             QPushButton {{
                 background: {Theme.GOLD_PRIMARY};
@@ -1004,7 +1006,7 @@ class InstalledGamesDialog(QDialog):
         self.refresh_button.setText("Refresh")
         
         if result['success']:
-            self.status_label.setText(f"Successfully uninstalled {game_name}")
+            self.status_label.setText(f"✅ Successfully uninstalled {game_name}!")
             self.status_label.setStyleSheet(f"color: {Theme.ACCENT_GREEN}; font-size: 14px;")
             
             # Reload games list
@@ -1037,7 +1039,7 @@ class InstalledGamesDialog(QDialog):
         self.refresh_button.setText("Refresh")
         
         if result['success']:
-            self.status_label.setText(f"Successfully refreshed {game_name}")
+            self.status_label.setText(f"✅ Successfully refreshed {game_name}!")
             self.status_label.setStyleSheet(f"color: {Theme.ACCENT_GREEN}; font-size: 14px;")
             
             # Reload games list
@@ -1456,11 +1458,14 @@ class ConfirmationOverlay(QDialog):
         if hasattr(self, 'exit_animation'):
             self.exit_animation.stop()
             
-        # Ensure the dialog closes
+        # Close the dialog with the appropriate result
         try:
-            self.accept()
+            if self.result_confirmed:
+                super().accept()
+            else:
+                super().reject()
         except Exception:
-            # Fallback to direct close if accept fails
+            # Fallback to direct close if accept/reject fails
             self.close()
             
     def reject(self):
@@ -1471,6 +1476,7 @@ class ConfirmationOverlay(QDialog):
         
     def accept(self):
         """Override accept to ensure proper cleanup"""
+        self.result_confirmed = True
         super().accept()
         
     def on_confirm(self):
@@ -2609,9 +2615,13 @@ class FirstTimeSetupWidget(QStackedWidget):
         path_layout = QHBoxLayout()
         
         self.steam_path_input = QLineEdit()
-        self.steam_path_input.setPlaceholderText("C:\\Program Files (x86)\\Steam")
+        
+        # Get the detected path
+        detected_steam_path = get_steam_path_with_fallbacks()
+        
+        self.steam_path_input.setPlaceholderText(detected_steam_path)
         self.steam_path_input.setStyleSheet(Theme.get_input_style())
-        self.steam_path_input.setText("C:\\Program Files (x86)\\Steam")  # Default
+        self.steam_path_input.setText(detected_steam_path)  # Use detected path as default
         path_layout.addWidget(self.steam_path_input, 1)
         
         browse_button = AnimatedButton("Browse")
@@ -2947,9 +2957,8 @@ class MainInterface(QWidget):
         elif result['success']:
             action_verb = result['action_verb']
             app_id = result['app_id']
-            stats = result['stats']
             
-            success_msg = f"{action_verb} AppID {app_id} successfully! ({stats['depots_processed']} depots, {stats['manifests_copied']} manifests)"
+            success_msg = f"✅ Successfully {action_verb.lower()} AppID {app_id}!"
             self.status_bar.update_status(success_msg, "success")
             
         else:
@@ -3007,7 +3016,7 @@ class MainInterface(QWidget):
                     
                     if uninstall_result.get('success', False):
                         logger.info(f"Successfully cleaned up cancelled installation for AppID {app_id}")
-                        self.status_bar.update_status(f"Installation cancelled and cleaned up for AppID {app_id}", "success")
+                        self.status_bar.update_status(f"✅ Successfully cancelled and cleaned up installation for AppID {app_id}!", "success")
                         
                         # Refresh the installed games view to remove it from the list
                         self.installed_games_dialog.load_games() if hasattr(self, 'installed_games_dialog') else None
@@ -3029,7 +3038,7 @@ class MainInterface(QWidget):
     def on_depot_deleted(self, app_id, depot_id):
         """Handle depot deletion notification"""
         logger.info(f"Depot {depot_id} was deleted from AppID {app_id}")
-        self.status_bar.update_status(f"Depot {depot_id} removed from AppID {app_id}", "success")
+        self.status_bar.update_status(f"✅ Successfully removed depot {depot_id} from AppID {app_id}!", "success")
     
     def on_installation_completed(self, result):
         """Handle installation completion from depot selection dialog"""
@@ -3046,8 +3055,7 @@ class MainInterface(QWidget):
                 logger.info(f"Installation continuing for AppID {app_id}")
             elif success:
                 # Installation completed successfully
-                stats = result.get('stats', {})
-                success_msg = f"Installation completed for AppID {app_id}! ({stats.get('depots_processed', 0)} depots, {stats.get('manifests_copied', 0)} manifests)"
+                success_msg = f"✅ Successfully installed AppID {app_id}!"
                 self.status_bar.update_status(success_msg, "success")
                 logger.info(f"Successfully completed installation for AppID {app_id}")
             else:
@@ -3067,7 +3075,7 @@ class MainInterface(QWidget):
         result = self.logic.launch_steam()
         
         if result['success']:
-            final_message = result['messages'][-1] if result['messages'] else "Steam launched successfully! 🚀"
+            final_message = result['messages'][-1] if result['messages'] else "✅ Successfully launched Steam!"
             self.status_bar.update_status(final_message, "success")
         else:
             error_msg = '; '.join(result['errors']) if result['errors'] else "Failed to launch Steam"
@@ -3080,7 +3088,7 @@ class MainInterface(QWidget):
         result = self.logic.fix_steam_offline()
         
         if result['success']:
-            final_message = result['messages'][-1] if result['messages'] else "Steam offline mode fixed successfully! ✅"
+            final_message = result['messages'][-1] if result['messages'] else "✅ Successfully fixed Steam offline mode!"
             self.status_bar.update_status(final_message, "success")
         else:
             error_msg = '; '.join(result['errors']) if result['errors'] else "Failed to fix Steam offline mode"
@@ -3106,7 +3114,7 @@ class MainInterface(QWidget):
             result = self.logic.uninstall_game(app_id)
             
             if result['success']:
-                self.status_bar.update_status(f"AppID {result['app_id']} uninstalled! {result['summary']}", "success")
+                self.status_bar.update_status(f"✅ Successfully uninstalled AppID {result['app_id']}! {result['summary']}", "success")
             else:
                 self.status_bar.update_status(f"Uninstallation failed: {result['error']}", "error")
                 
@@ -3136,7 +3144,7 @@ class MainInterface(QWidget):
         result = self.logic.clear_all_application_data()
         
         if result['success']:
-            self.status_bar.update_status(f"Data cleared! {result['summary']}", "success")
+            self.status_bar.update_status(f"✅ Successfully cleared data! {result['summary']}", "success")
             # Close the application after successfully clearing data
             QApplication.instance().quit()
         else:
@@ -3242,7 +3250,7 @@ class MainInterface(QWidget):
                 achievement_thread.daemon = True
                 achievement_thread.start()
                 
-                self.status_bar.update_status("Achievements script started in console window", "success")
+                self.status_bar.update_status("✅ Successfully started achievements script in console window!", "success")
                 logger.info("Achievements script started in separate thread with console")
                 
             else:
@@ -3263,7 +3271,7 @@ class MainInterface(QWidget):
                     creationflags=subprocess.CREATE_NEW_CONSOLE if os.name == 'nt' else 0
                 )
                 
-                self.status_bar.update_status("Achievements script launched in new console window", "success")
+                self.status_bar.update_status("✅ Successfully launched achievements script in new console window!", "success")
                 
         except Exception as e:
             logger.error(f"Failed to run achievements script: {e}")

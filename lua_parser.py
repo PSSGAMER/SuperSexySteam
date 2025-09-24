@@ -284,11 +284,18 @@ def parse_lua_for_depots(lua_path, game_name=None):
                         depot_id, depot_key = args[0], args[1]
                         
                         # Validate depot_id is numeric and has a non-empty key
-                        if depot_id.isdigit() and depot_key.strip() and depot_id != app_id:
+                        if depot_id.isdigit() and depot_key.strip():
+                            # Determine depot name: if depot_id equals app_id, use game name
+                            if depot_id == app_id and game_name:
+                                depot_name = game_name
+                                logger.debug(f"Using game name '{game_name}' for depot {depot_id} (matches AppID)")
+                            else:
+                                depot_name = depot_name_from_comment or 'No Name'
+                            
                             depot_data = {
                                 'depot_id': depot_id,
                                 'depot_key': depot_key,
-                                'depot_name': depot_name_from_comment or 'No Name'
+                                'depot_name': depot_name
                             }
                             extracted_depots.append(depot_data)
                             logger.debug(f"Found adddepot: {depot_id} with key and name '{depot_data['depot_name']}'")
@@ -300,11 +307,18 @@ def parse_lua_for_depots(lua_path, game_name=None):
                         depot_id, flag, depot_key = args[0], args[1], args[2]
                         
                         # Validate depot_id is numeric and has a non-empty key
-                        if (depot_id.isdigit() and depot_key.strip() and depot_id != app_id):
+                        if (depot_id.isdigit() and depot_key.strip()):
+                            # Determine depot name: if depot_id equals app_id, use game name
+                            if depot_id == app_id and game_name:
+                                depot_name = game_name
+                                logger.debug(f"Using game name '{game_name}' for depot {depot_id} (matches AppID)")
+                            else:
+                                depot_name = depot_name_from_comment or 'No Name'
+                            
                             depot_data = {
                                 'depot_id': depot_id,
                                 'depot_key': depot_key,
-                                'depot_name': depot_name_from_comment or 'No Name'
+                                'depot_name': depot_name
                             }
                             extracted_depots.append(depot_data)
                             logger.debug(f"Found addappid: {depot_id} with key and name '{depot_data['depot_name']}'")
@@ -384,8 +398,8 @@ def parse_lua_for_all_depots(lua_path, game_name=None):
                     if args and len(args) >= 1:
                         depot_id = args[0]
                         
-                        # Skip if this ID matches the AppID (from filename)
-                        if depot_id.isdigit() and depot_id != app_id:
+                        # Include all valid numeric depot IDs
+                        if depot_id.isdigit():
                             depot_data = {'depot_id': depot_id}
                             if len(args) >= 2 and args[1].strip():
                                 depot_data['depot_key'] = args[1]
@@ -399,8 +413,8 @@ def parse_lua_for_all_depots(lua_path, game_name=None):
                         if args and len(args) >= 1:
                             depot_id = args[0]
                             
-                            # Skip if this ID matches the AppID (from filename)
-                            if depot_id.isdigit() and depot_id != app_id:
+                            # Include all valid numeric depot IDs
+                            if depot_id.isdigit():
                                 depot_data = {'depot_id': depot_id}
                                 # Check if it has a key (3rd argument)
                                 if (len(args) >= 3 and args[2].strip()):
@@ -414,7 +428,12 @@ def parse_lua_for_all_depots(lua_path, game_name=None):
                         depot_data['depot_name'] = depot_name_from_comment
                         logger.debug(f"Added depot name '{depot_name_from_comment}' to depot {depot_data['depot_id']}")
                     elif depot_data:
-                        depot_data['depot_name'] = 'No Name'
+                        # Check if depot_id equals app_id and we have a game name
+                        if depot_data['depot_id'] == app_id and game_name:
+                            depot_data['depot_name'] = game_name
+                            logger.debug(f"Using game name '{game_name}' for depot {depot_data['depot_id']} (matches AppID)")
+                        else:
+                            depot_data['depot_name'] = 'No Name'
                     
                     # Add or update depot data
                     if depot_data:
@@ -432,7 +451,12 @@ def parse_lua_for_all_depots(lua_path, game_name=None):
                                 depot_data['depot_name'] != 'No Name' and 
                                 (('depot_name' not in existing_depot) or existing_depot.get('depot_name') == 'No Name')):
                                 existing_depot['depot_name'] = depot_data['depot_name']
-                                logger.debug(f"Updated depot {depot_data['depot_id']} with name")
+                                logger.debug(f"Updated depot {depot_data['depot_id']} with name '{depot_data['depot_name']}'")
+                            # Special case: if depot_id equals app_id and we have a game name, prioritize it
+                            elif (depot_data['depot_id'] == app_id and game_name and 
+                                  existing_depot.get('depot_name') != game_name):
+                                existing_depot['depot_name'] = game_name
+                                logger.debug(f"Updated depot {depot_data['depot_id']} with game name '{game_name}' (matches AppID)")
                         else:
                             # Add new depot
                             extracted_depots.append(depot_data)
