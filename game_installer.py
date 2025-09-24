@@ -322,7 +322,7 @@ class GameInstaller:
                         logger.debug("ACF generation exception:", exc_info=True)
                         result['warnings'].append(warning_msg)
             
-            # Step 9: Copy files to Steam directories (final step)
+            # Step 9: Copy files to Steam directories
             if self.is_steam_path_valid:
                 # Check if steamtools is disabled in config
                 disable_steamtools = self.config.getboolean('Settings', 'disable_steamtools', fallback=True)

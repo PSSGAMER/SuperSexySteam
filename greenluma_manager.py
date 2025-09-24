@@ -456,6 +456,8 @@ def process_single_appid_for_greenluma(gl_path, app_id, depots):
         logger.debug(f"Processing {len(depots)} depots")
         for depot in depots:
             depot_id = depot['depot_id']
+            if depot_id == app_id:
+                continue
             if depot_id in existing_ids:
                 logger.debug(f"DepotID {depot_id} already exists in AppList, skipping")
                 result['stats']['skipped_duplicates'] += 1

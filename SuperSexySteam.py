@@ -484,7 +484,7 @@ class InstalledGameWidget(GradientFrame):
         bottom_layout.addStretch()
         
         # Refresh button
-        refresh_button = AnimatedButton("Refresh")
+        refresh_button = AnimatedButton("Reinstall")
         refresh_button.setStyleSheet(f"""
             QPushButton {{
                 background: {Theme.GOLD_PRIMARY};
