@@ -6,8 +6,3 @@ vdf
 requests
 psutil
 keyring
-
-Refresh broken
-Reinstall broken for config changes
-repeated applist fill - done
-auto updataes manifest hub
