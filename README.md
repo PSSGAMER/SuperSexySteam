@@ -4,7 +4,7 @@
 
 *A modern, powerful GUI application for managing Steam games with GreenLuma integration*
 
-## CURRENTLY BROKEN! The method used by the project has been removed from steam, the plan moving forward is the remove the Greenluma dependency to have more control over the project. 
+## CURRENTLY ON HALT! The plan moving forward is the remove the Greenluma dependency to have more control over the project. 
 
 </div>
 
