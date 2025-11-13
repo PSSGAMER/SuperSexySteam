@@ -4,7 +4,7 @@
 
 *A modern, powerful GUI application for managing Steam games with GreenLuma integration*
 
-## CURRENTLY ON HALT! The plan moving forward is the remove the Greenluma dependency to have more control over the project. 
+## CURRENTLY ON HALT! Due to my studies 
 
 </div>
 
@@ -134,6 +134,13 @@ The installer will:
 - Extract files to `%AppData%\Roaming\SuperSexySteam`
 - Create desktop shortcuts
 - Set up the application for immediate use
+
+
+## Planned Features
+
+- **API Supoort**: Download files directly from the application using your own API
+- **Auto Update**: Auto Update all games using your own API
+- **Better Depot Naming**: Fetch depot names from the server instead of fetching it from the file
 
 ## 🐛 Troubleshooting
 
