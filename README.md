@@ -27,8 +27,11 @@
 - **GreenLuma Support**: Full integration with GreenLuma 2025 for DLL injection
 - **Achievement Notifications**: Notifies when you gain any achievement and you can also see all the achievements if you set steam to offline mode
 ### 🛠️ Planned Features
-- **Denuvo Token Integration**: Advanced DRM handling
-- **Auto Game Installer & Updater**: Automated game management
+- **Denuvo Token Integration and Steamless**: Advanced DRM handling
+- **API Supoort**: Download files directly from the application using your own API
+- **Auto Update**: Auto Update all games using your own API
+- **Better Depot Naming**: Fetch depot names from the server instead of fetching it from the file
+
 
 ## 🚀 Installation
 
@@ -135,12 +138,6 @@ The installer will:
 - Create desktop shortcuts
 - Set up the application for immediate use
 
-
-## Planned Features
-
-- **API Supoort**: Download files directly from the application using your own API
-- **Auto Update**: Auto Update all games using your own API
-- **Better Depot Naming**: Fetch depot names from the server instead of fetching it from the file
 
 ## 🐛 Troubleshooting
 
